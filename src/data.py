@@ -20,7 +20,7 @@ class Subject:
 
 def parse_subject(filename: str) -> Subject:
     individual = ET.parse(filename)
-    id = individual.find("ID")
+    id = individual.findtext("ID")
     posts = []
     for writing in individual.iterfind("WRITING"):
         title = writing.findtext("TITLE").strip()
