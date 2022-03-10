@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List
+from pathlib import Path
+from typing import List, Optional
 from xml.etree import ElementTree as ET
 
 
@@ -16,6 +17,7 @@ class Post:
 class Subject:
     id: str
     posts: List[Post]
+    label: Optional[bool]
 
 
 def parse_subject(filename: str) -> Subject:
@@ -28,4 +30,6 @@ def parse_subject(filename: str) -> Subject:
         info = writing.findtext("INFO").strip()
         text = writing.findtext("TEXT").strip()
         posts.append(Post(title, date, info, text))
-    return Subject(id, posts)
+    label = Path(filename).parent.name
+    assert label in ["neg", "pos"]
+    return Subject(id, posts, label == "pos")

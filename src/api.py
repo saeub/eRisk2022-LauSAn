@@ -2,15 +2,16 @@ import sys
 
 from flask import Flask, jsonify, request
 
-from data import parse_subject
+import data
+import evaluation
 
 NUM_RUNS = 1
 SUBJECTS = {
     subject.id: subject
-    for subject in (parse_subject(filename) for filename in sys.argv[1:3])
+    for subject in (data.parse_subject(filename) for filename in sys.argv[1:])
 }
 number = 0
-runs = [{nick: [] for nick in SUBJECTS} for _ in range(NUM_RUNS)]
+runs = [{subject_id: [] for subject_id in SUBJECTS} for _ in range(NUM_RUNS)]
 
 app = Flask(__name__)
 
@@ -49,7 +50,7 @@ def submit(team_token, run_number):
         assert isinstance(
             score, float
         ), f"Score has type {type(score)}, should be a float"
-        runs[run_number][nick].append(decision)
+        runs[run_number][nick].append(bool(decision))
     global number
     number += 1
     return jsonify(None)
@@ -57,8 +58,66 @@ def submit(team_token, run_number):
 
 @app.route("/results", methods=["GET"])
 def results():
-    # TODO: Evaluate and render metrics as HTML
-    return jsonify(runs)
+    max_num_posts = max(len(subject.posts) for subject in SUBJECTS.values())
+    runs_html = ""
+    for i, run in enumerate(runs):
+        erde_5 = evaluation.mean_erde(run, SUBJECTS.values(), o=5)
+        erde_50 = evaluation.mean_erde(run, SUBJECTS.values(), o=50)
+        recall, precision, f1 = evaluation.recall_precision_f1(run, SUBJECTS.values())
+        metrics_html = f"""
+            <ul>
+                <li><i>ERDE<sub>5</sub></i> = {erde_5}</li>
+                <li><i>ERDE<sub>50</sub></i> = {erde_50}</li>
+                <li><i>R</i> = {recall}</li>
+                <li><i>P</i> = {precision}</li>
+                <li><i>F<sub>1</sub></i> = {f1}</li>
+            </ul>
+        """
+
+        rows_html = f"""
+            <tr>
+                <th>Subject</th>
+                <th>True label</th>
+                {"".join(f'<th>{i}</th>' for i in range(max_num_posts))}
+            </tr>
+        """
+        for subject_id, subject in SUBJECTS.items():
+            cells_html = ""
+            decision_made = False
+            for decision in run[subject_id]:
+                if decision_made:
+                    cells_html += f'<td style="color: lightgray">{int(decision)}</td>'
+                else:
+                    cells_html += f"<td>{int(decision)}</td>"
+                if decision == 1:
+                    decision_made = True
+            rows_html += f"""
+                <tr>
+                    <td>{subject_id}</td>
+                    <td>{int(subject.label)}</td>
+                    {cells_html}
+                </tr>
+            """
+        runs_html += f"""
+            <h2>Run {i}</h2>
+            {metrics_html}
+            <table>
+                {rows_html}
+            </table>
+        """
+
+    return f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>Evaluation results</title>
+            </head>
+            <body>
+                <h1>Evaluation results</h1>
+                {runs_html}
+            </body>
+        </html>
+    """
 
 
 if __name__ == "__main__":
