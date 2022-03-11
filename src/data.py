@@ -30,6 +30,7 @@ def parse_subject(filename: str) -> Subject:
         info = writing.findtext("INFO").strip()
         text = writing.findtext("TEXT").strip()
         posts.append(Post(title, date, info, text))
+    posts.sort(key=lambda post: post.date)
     label = Path(filename).parent.name
     assert label in ["neg", "pos"]
     return Subject(id, posts, label == "pos")

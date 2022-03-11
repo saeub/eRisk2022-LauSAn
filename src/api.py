@@ -84,11 +84,12 @@ def results():
         for subject_id, subject in SUBJECTS.items():
             cells_html = ""
             decision_made = False
-            for decision in run[subject_id]:
+            for i, decision in enumerate(run[subject_id]):
+                post_link = f"/posts/{subject_id}#{i}"
                 if decision_made:
-                    cells_html += f'<td style="color: lightgray">{int(decision)}</td>'
+                    cells_html += f'<td style="color: lightgray"><a href="{post_link}" target="_blank">{int(decision)}</a></td>'
                 else:
-                    cells_html += f"<td>{int(decision)}</td>"
+                    cells_html += f'<td><a href="{post_link}" target="_blank">{int(decision)}</a></td>'
                 if decision == 1:
                     decision_made = True
             rows_html += f"""
@@ -117,6 +118,25 @@ def results():
                 {runs_html}
             </body>
         </html>
+    """
+
+
+@app.route("/posts/<subject_id>", methods=["GET"])
+def posts(subject_id):
+    if subject_id not in SUBJECTS:
+        return f"Subject with ID {subject_id} not found", 404
+    subject = SUBJECTS[subject_id]
+    posts_html = ""
+    for i, post in enumerate(subject.posts):
+        posts_html += f"""
+            <h2 id="{i}">{post.title or "<i>(no title)</i>"}</h2>
+            <p><i>{post.date}</i></p>
+            <p>{post.text}</p>
+            <hr>
+        """
+    return f"""
+        <h1>Posts by {subject.id}</h1>
+        {posts_html}
     """
 
 
