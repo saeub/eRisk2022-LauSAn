@@ -1,7 +1,8 @@
-from abc import ABC, abstractmethod
 import random
-from data import Subject
+from abc import ABC, abstractmethod
 from typing import Collection, Sequence
+
+from data import Subject
 
 
 class Model(ABC):
@@ -14,14 +15,25 @@ class Model(ABC):
         raise NotImplementedError()
 
 
-class DummyModel(Model):
+class RandomBaseline(Model):
+    def __init__(self, positive_ratio: float = 0.125):
+        self.positive_ratio = positive_ratio
+        self.subject_predictions = {}
+
     def train(self, subjects: Collection[Subject]):
         pass
 
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
-        return [random.random() for subject in subjects]
+        predictions = []
+        for subject in subjects:
+            predictions.append(
+                self.subject_predictions.setdefault(
+                    subject.id, float(random.random() < self.positive_ratio)
+                )
+            )
+        return predictions
 
 
 def load(filename: str) -> Model:
     # TODO
-    return DummyModel()
+    return RandomBaseline()

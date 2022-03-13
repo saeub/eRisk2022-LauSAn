@@ -60,7 +60,7 @@ def submit(team_token, run_number):
 def results():
     max_num_posts = max(len(subject.posts) for subject in SUBJECTS.values())
     runs_html = ""
-    for i, run in enumerate(runs):
+    for run_number, run in enumerate(runs):
         erde_5 = evaluation.mean_erde(run, SUBJECTS.values(), o=5)
         erde_50 = evaluation.mean_erde(run, SUBJECTS.values(), o=50)
         recall, precision, f1 = evaluation.recall_precision_f1(run, SUBJECTS.values())
@@ -87,9 +87,20 @@ def results():
             for i, decision in enumerate(run[subject_id]):
                 post_link = f"/posts/{subject_id}#{i}"
                 if decision_made:
-                    cells_html += f'<td style="color: lightgray"><a href="{post_link}" target="_blank">{int(decision)}</a></td>'
+                    cells_html += f"""
+                        <td>
+                            <a href="{post_link}"
+                               target="_blank"
+                               style="color: lightgray">{int(decision)}</a>
+                        </td>
+                    """
                 else:
-                    cells_html += f'<td><a href="{post_link}" target="_blank">{int(decision)}</a></td>'
+                    cells_html += f"""
+                        <td>
+                            <a href="{post_link}"
+                               target="_blank">{int(decision)}</a>
+                        </td>
+                    """
                 if decision == 1:
                     decision_made = True
             rows_html += f"""
@@ -100,7 +111,7 @@ def results():
                 </tr>
             """
         runs_html += f"""
-            <h2>Run {i}</h2>
+            <h2>Run {run_number}</h2>
             {metrics_html}
             <table>
                 {rows_html}

@@ -1,4 +1,5 @@
 from argparse import ArgumentParser, Namespace
+from tqdm import tqdm
 from datetime import datetime
 
 import requests
@@ -44,11 +45,15 @@ def submit(args):
 
     subjects = {}
 
+    progress = None
     while True:
         # Get new posts
         writings = requests.get(f"{args.api}/getwritings/{args.team_token}").json()
         subject_ids = [writing["nick"] for writing in writings]
-        print(len(writings))
+        if progress is None:
+            progress = tqdm(total=len(subject_ids))
+        progress.n = progress.total - len(writings)
+        progress.refresh()
         if len(writings) == 0:
             break
 
