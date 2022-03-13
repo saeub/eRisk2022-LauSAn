@@ -39,7 +39,7 @@ def getwritings(team_token):
 def submit(team_token, run_number):
     data = request.get_json()
     assert len(data) == len(
-        SUBJECTS
+        [subject for subject in SUBJECTS.values() if len(subject.posts) > number]
     ), f"Sent decisions for {len(data)} subjects instead of {len(SUBJECTS)}"
     for d in data:
         nick = d["nick"]
@@ -113,7 +113,7 @@ def results():
             <head>
                 <title>Evaluation results</title>
             </head>
-            <body>
+            <body style="font-family: sans-serif">
                 <h1>Evaluation results</h1>
                 {runs_html}
             </body>
@@ -135,8 +135,16 @@ def posts(subject_id):
             <hr>
         """
     return f"""
-        <h1>Posts by {subject.id}</h1>
-        {posts_html}
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>Posts by {subject.id}</title>
+            </head>
+            <body style="font-family: sans-serif">
+                <h1>Posts by {subject.id}</h1>
+                {posts_html}
+            </body>
+        </html>
     """
 
 

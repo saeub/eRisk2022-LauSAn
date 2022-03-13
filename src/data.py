@@ -9,7 +9,6 @@ from xml.etree import ElementTree as ET
 class Post:
     title: str
     date: datetime
-    info: str
     text: str
 
 
@@ -27,9 +26,8 @@ def parse_subject(filename: str) -> Subject:
     for writing in individual.iterfind("WRITING"):
         title = writing.findtext("TITLE").strip()
         date = datetime.fromisoformat(writing.findtext("DATE").strip())
-        info = writing.findtext("INFO").strip()
         text = writing.findtext("TEXT").strip()
-        posts.append(Post(title, date, info, text))
+        posts.append(Post(title, date, text))
     posts.sort(key=lambda post: post.date)
     label = Path(filename).parent.name
     assert label in ["neg", "pos"]
