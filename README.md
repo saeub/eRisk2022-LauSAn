@@ -11,10 +11,10 @@
 ## Training
 
 ```bash
-$ python src/main.py train ModelType
+$ python src/main.py train ModelType path/to/trainset/*.xml
 ```
 
-Use `python src/main.py train --help` to see available model types.
+By default, the model will be saved with a timestamp in the filename in the current working directory. Use `python src/main.py train --help` to see available model types and other options.
 
 ## Testing
 
