@@ -1,24 +1,29 @@
-from argparse import ArgumentParser, Namespace
-from tqdm import tqdm
+import argparse
 from datetime import datetime
 
 import requests
+from tqdm import tqdm
 
 import models
-from data import Post, Subject
+from data import Post, Subject, parse_subject
 
 
-def parse_args() -> Namespace:
-    parser = ArgumentParser()
+def parse_args() -> argparse.Namespace:
+    parser_kwargs = {"formatter_class": argparse.ArgumentDefaultsHelpFormatter}
+    parser = argparse.ArgumentParser(**parser_kwargs)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     model_classes = {model.__name__: model for model in models.Model.__subclasses__()}
-    train_parser = subparsers.add_parser("train")
+    train_parser = subparsers.add_parser("train", **parser_kwargs)
     train_parser.add_argument(
         "model_class", choices=model_classes, help="Type of model."
     )
+    train_parser.add_argument("subjects", nargs="*", help="Training subject XML files.")
+    train_parser.add_argument(
+        "--save-path", help="File name for storing the trained model."
+    )
 
-    submit_parser = subparsers.add_parser("submit")
+    submit_parser = subparsers.add_parser("submit", **parser_kwargs)
     submit_parser.add_argument(
         "models", nargs="+", help="Paths to saved model (each model is a separate run)."
     )
@@ -37,7 +42,13 @@ def parse_args() -> Namespace:
 
 def train(args):
     model: models.Model = args.model_class()
-    model.train()
+    subjects = [parse_subject(filename) for filename in args.subjects]
+    model.train(subjects)
+    save_path = (
+        args.save_path
+        or f"{args.model_class.__name__}_{datetime.now().isoformat()}.pickle"
+    )
+    models.save(model, save_path)
 
 
 def submit(args):
@@ -77,7 +88,7 @@ def submit(args):
             data = [
                 {
                     "nick": subject_id,
-                    "decision": round(prediction),
+                    "decision": 0 if prediction < 0.5 else 1,
                     "score": prediction,
                 }
                 for subject_id, prediction in zip(subject_ids, predictions)
@@ -89,7 +100,7 @@ if __name__ == "__main__":
     args = parse_args()
     if args.command == "train":
         train(args)
-    if args.command == "submit":
+    elif args.command == "submit":
         submit(args)
     else:
         raise NotImplementedError(f"Command {args.command} not implemented")
