@@ -21,7 +21,7 @@ class Subject:
 
 def parse_subject(filename: str) -> Subject:
     individual = ET.parse(filename)
-    id = individual.findtext("ID")
+    subject_id = individual.findtext("ID")
     posts = []
     for writing in individual.iterfind("WRITING"):
         title = writing.findtext("TITLE").strip()
@@ -31,4 +31,4 @@ def parse_subject(filename: str) -> Subject:
     posts.sort(key=lambda post: post.date)
     label = Path(filename).parent.name
     assert label in ["neg", "pos"]
-    return Subject(id, posts, label == "pos")
+    return Subject(subject_id, posts, label == "pos")
