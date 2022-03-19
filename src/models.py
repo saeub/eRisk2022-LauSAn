@@ -6,6 +6,9 @@ from collections import defaultdict
 from typing import Collection, List, Sequence
 
 import numpy as np
+import sklearn.linear_model
+import torch
+import transformers
 
 from data import Subject
 
@@ -87,6 +90,46 @@ class VocabularyBaseline(Model):
             num_matches = sum(word in self._pos_vocab for word in last_post)
             predictions.append(num_matches / (len(last_post) or 1) * 50)
         return predictions
+
+
+class BertEmbeddingClassifier(Model):
+    def __init__(
+        self,
+        layers: Collection[str] = (-4, -3, -2, -1),
+        model_name: str = "bert-base-uncased",
+    ):
+        self.layers = layers
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        self._model = transformers.AutoModel.from_pretrained(
+            model_name, output_hidden_states=True
+        )
+        self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
+
+    def _get_embeddings(self, text: str) -> torch.Tensor:
+        tokens = self._tokenizer.encode(text, return_tensors="pt", truncation=True)
+        with torch.no_grad():
+            states = self._model(tokens).hidden_states
+        embeddings = torch.stack([states[i] for i in self.layers]).sum(0).squeeze()
+        return embeddings
+
+    def _encode_subject(self, subject: Subject) -> torch.Tensor:
+        text = subject.posts[-1].text
+        embeddings = self._get_embeddings(text)
+        return embeddings.mean(0)  # TODO: Try other aggregations
+
+    def train(self, subjects: Collection[Subject]):
+        X = []
+        y = []
+        for subject in subjects:
+            x = self._encode_subject(subject)
+            X.append(x)
+            y.append(float(subject.label))
+        self._classifier.fit(torch.stack(X), y)
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        X = torch.stack([self._encode_subject(subject) for subject in subjects])
+        y_pred = self._classifier.predict(X)
+        return y_pred
 
 
 def save(model: Model, filename: str):

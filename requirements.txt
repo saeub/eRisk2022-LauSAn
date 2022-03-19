@@ -2,6 +2,8 @@ matplotlib==3.5.1
 numpy==1.22.2
 pandas==1.4.1
 transformers==4.17.0
+torch==1.11.0
+scikit-learn==1.0.2
 tqdm==4.63.0
 requests==2.27.1
 Flask==2.0.3
