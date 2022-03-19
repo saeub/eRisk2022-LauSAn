@@ -13,6 +13,9 @@ import transformers
 from data import Subject
 
 
+DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
+
+
 class Model(ABC):
     @abstractmethod
     def train(self, subjects: Collection[Subject]):
@@ -102,15 +105,17 @@ class BertEmbeddingClassifier(Model):
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
         self._model = transformers.AutoModel.from_pretrained(
             model_name, output_hidden_states=True
-        )
+        ).to(DEVICE)
         self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
 
     def _get_embeddings(self, text: str) -> torch.Tensor:
-        tokens = self._tokenizer.encode(text, return_tensors="pt", truncation=True)
+        tokens = self._tokenizer.encode(text, return_tensors="pt", truncation=True).to(
+            DEVICE
+        )
         with torch.no_grad():
             states = self._model(tokens).hidden_states
         embeddings = torch.stack([states[i] for i in self.layers]).sum(0).squeeze()
-        return embeddings
+        return embeddings.cpu()
 
     def _encode_subject(self, subject: Subject) -> torch.Tensor:
         text = subject.posts[-1].text

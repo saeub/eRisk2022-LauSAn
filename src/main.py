@@ -1,6 +1,7 @@
 import argparse
 from datetime import datetime
 
+import dateutil.parser
 import requests
 from tqdm import tqdm
 
@@ -76,7 +77,7 @@ def submit(args):
             subject.posts.append(
                 Post(
                     writing["title"],
-                    datetime.fromisoformat(writing["date"]),
+                    dateutil.parser.isoparse(writing["date"]),
                     writing["content"],
                 )
             )
