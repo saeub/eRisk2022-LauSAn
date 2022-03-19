@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+import dateutil.parser
 from pathlib import Path
 from typing import List, Optional
 from xml.etree import ElementTree as ET
@@ -25,7 +26,7 @@ def parse_subject(filename: str) -> Subject:
     posts = []
     for writing in individual.iterfind("WRITING"):
         title = writing.findtext("TITLE").strip()
-        date = datetime.fromisoformat(writing.findtext("DATE").strip())
+        date = dateutil.parser.isoparse(writing.findtext("DATE").strip())
         text = writing.findtext("TEXT").strip()
         posts.append(Post(title, date, text))
     posts.sort(key=lambda post: post.date)
