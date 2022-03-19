@@ -11,7 +11,8 @@ from data import Post, Subject, parse_subject
 def parse_args() -> argparse.Namespace:
     parser_kwargs = {"formatter_class": argparse.ArgumentDefaultsHelpFormatter}
     parser = argparse.ArgumentParser(**parser_kwargs)
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="command")
+    subparsers.required = True
 
     model_classes = {model.__name__: model for model in models.Model.__subclasses__()}
     train_parser = subparsers.add_parser("train", **parser_kwargs)

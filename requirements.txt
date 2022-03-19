@@ -1,7 +1,9 @@
-matplotlib==3.5.1
-numpy==1.22.2
-pandas==1.4.1
-transformers==4.17.0
-tqdm==4.63.0
-requests==2.27.1
-Flask==2.0.3
+matplotlib>=3.3,<4
+numpy>=1.19,<2
+pandas>=1.1,<2
+transformers>=4.17,<5
+torch>=1.10,<2
+scikit-learn>=0.24,<1
+tqdm>=4.63,<5
+requests>=2.27,<3
+Flask>=2.0,<3
