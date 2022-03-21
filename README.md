@@ -10,8 +10,10 @@
 
 ## Training
 
+We use two different train/test sets for evaluating our models before submission. To train on set 1:
+
 ```bash
-$ python src/main.py train ModelType path/to/trainset/*.xml
+$ xargs python src/main.py train ModelType < data/train_set_1.txt
 ```
 
 By default, the model will be saved with a timestamp in the filename in the current working directory. Use `python src/main.py train --help` to see available model types and other options.
@@ -20,9 +22,9 @@ By default, the model will be saved with a timestamp in the filename in the curr
 
 The final submission will work via a [JSON API](https://erisk.irlab.org/server.html), so we use a local dummy API (running at http://localhost:5000) with the same interface to evaluate our results and test our submission client during development.
 
-1. Run the local submission API, providing test XML files as arguments. For example, using cases from the 2017 dataset as the test set:
+1. Run the local submission API, providing test XML files as arguments. For example, using our test set 1:
    ```bash
-   $ python src/api.py data/training_t2/TRAINING_DATA/2017_cases/*/*.xml
+   $ xargs python src/api.py < data/test_set_1.txt
    ```
 1. Run the submission client:
    ```bash
