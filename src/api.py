@@ -1,14 +1,26 @@
-import sys
+import argparse
 
 from flask import Flask, jsonify, request
 
 import data
 import evaluation
 
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument("subjects", nargs="*", help="Test subject XML files.")
+    parser.add_argument("--port", type=int, default=5000, help="Server port.")
+    return parser.parse_args()
+
+
+args = parse_args()
+
 NUM_RUNS = 1
 SUBJECTS = {
     subject.id: subject
-    for subject in (data.parse_subject(filename) for filename in sys.argv[1:])
+    for subject in (data.parse_subject(filename) for filename in args.subjects)
 }
 number = 0
 runs = [{subject_id: [] for subject_id in SUBJECTS} for _ in range(NUM_RUNS)]
@@ -177,5 +189,4 @@ def posts(subject_id):
     """
 
 
-if __name__ == "__main__":
-    app.run()
+app.run(port=args.port)
