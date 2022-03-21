@@ -76,9 +76,9 @@ def submit(args):
             subject = subjects.setdefault(subject_id, Subject(subject_id, [], None))
             subject.posts.append(
                 Post(
-                    writing["title"],
-                    dateutil.parser.isoparse(writing["date"]),
-                    writing["content"],
+                    writing["title"].strip(),
+                    dateutil.parser.isoparse(writing["date"].strip()),
+                    writing["content"].strip(),
                 )
             )
 

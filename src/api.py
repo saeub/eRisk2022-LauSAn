@@ -27,7 +27,7 @@ def getwritings(team_token):
                 "redditor": 12345,
                 "title": subject.posts[number].title,
                 "content": subject.posts[number].text,
-                "date": subject.posts[number].date.isoformat(" ", "seconds"),
+                "date": subject.posts[number].date.isoformat(),
             }
             for subject in SUBJECTS.values()
             if len(subject.posts) > number
