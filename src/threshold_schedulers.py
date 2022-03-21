@@ -36,4 +36,4 @@ class ExponentialThresholdScheduler(ThresholdScheduler):
         threshold = self.target_threshold + (
             self.start_threshold - self.target_threshold
         ) * 10 ** (-round / self.time_constant)
-        return score >= threshold
+        return bool(score >= threshold)
