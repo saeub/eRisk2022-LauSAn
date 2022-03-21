@@ -62,7 +62,7 @@ def submit(team_token, run_number):
         assert isinstance(
             score, float
         ), f"Score has type {type(score)}, should be a float"
-        runs[run_number][nick].append(bool(decision))
+        runs[run_number][nick].append((bool(decision), score))
     global number
     number += 1
     return jsonify(None)
@@ -70,12 +70,17 @@ def submit(team_token, run_number):
 
 @app.route("/results", methods=["GET"])
 def results():
-    max_num_posts = max(len(subject.posts) for subject in SUBJECTS.values())
     runs_html = ""
     for run_number, run in enumerate(runs):
-        erde_5 = evaluation.mean_erde(run, SUBJECTS.values(), o=5)
-        erde_50 = evaluation.mean_erde(run, SUBJECTS.values(), o=50)
-        recall, precision, f1 = evaluation.recall_precision_f1(run, SUBJECTS.values())
+        decisions = {
+            subject_id: [decision for (decision, score) in predictions]
+            for subject_id, predictions in run.items()
+        }
+        erde_5 = evaluation.mean_erde(decisions, SUBJECTS.values(), o=5)
+        erde_50 = evaluation.mean_erde(decisions, SUBJECTS.values(), o=50)
+        recall, precision, f1 = evaluation.recall_precision_f1(
+            decisions, SUBJECTS.values()
+        )
         metrics_html = f"""
             <ul>
                 <li><i>ERDE<sub>5</sub></i> = {erde_5}</li>
@@ -119,21 +124,23 @@ def results_run(run_number):
     for subject_id, subject in SUBJECTS.items():
         cells_html = ""
         decision_made = False
-        for i, decision in enumerate(run[subject_id]):
+        for i, (decision, score) in enumerate(run[subject_id]):
             post_link = f"/posts/{subject_id}#{i}"
             if decision_made:
                 cells_html += f"""
                     <td>
                         <a href="{post_link}"
-                            target="_blank"
-                            style="color: lightgray">{int(decision)}</a>
+                           target="_blank"
+                           title="{score}"
+                           style="color: lightgray">{int(decision)}</a>
                     </td>
                 """
             else:
                 cells_html += f"""
                     <td>
                         <a href="{post_link}"
-                            target="_blank">{int(decision)}</a>
+                           target="_blank"
+                           title="{score}">{int(decision)}</a>
                     </td>
                 """
             if decision == 1:
