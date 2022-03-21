@@ -74,48 +74,9 @@ def results():
             </ul>
         """
 
-        rows_html = f"""
-            <tr>
-                <th>Subject</th>
-                <th>True label</th>
-                {"".join(f'<th>{i}</th>' for i in range(max_num_posts))}
-            </tr>
-        """
-        for subject_id, subject in SUBJECTS.items():
-            cells_html = ""
-            decision_made = False
-            for i, decision in enumerate(run[subject_id]):
-                post_link = f"/posts/{subject_id}#{i}"
-                if decision_made:
-                    cells_html += f"""
-                        <td>
-                            <a href="{post_link}"
-                               target="_blank"
-                               style="color: lightgray">{int(decision)}</a>
-                        </td>
-                    """
-                else:
-                    cells_html += f"""
-                        <td>
-                            <a href="{post_link}"
-                               target="_blank">{int(decision)}</a>
-                        </td>
-                    """
-                if decision == 1:
-                    decision_made = True
-            rows_html += f"""
-                <tr>
-                    <td>{subject_id}</td>
-                    <td>{int(subject.label)}</td>
-                    {cells_html}
-                </tr>
-            """
         runs_html += f"""
-            <h2>Run {run_number}</h2>
+            <h2><a href="/results/{run_number}">Run {run_number}</a></h2>
             {metrics_html}
-            <table>
-                {rows_html}
-            </table>
         """
 
     return f"""
@@ -127,6 +88,63 @@ def results():
             <body style="font-family: sans-serif">
                 <h1>Evaluation results</h1>
                 {runs_html}
+            </body>
+        </html>
+    """
+
+
+@app.route("/results/<int:run_number>", methods=["GET"])
+def results_run(run_number):
+    run = runs[run_number]
+    max_num_posts = max(len(subject.posts) for subject in SUBJECTS.values())
+    rows_html = f"""
+        <tr>
+            <th>Subject</th>
+            <th>True label</th>
+            {"".join(f'<th>{i}</th>' for i in range(max_num_posts))}
+        </tr>
+    """
+    for subject_id, subject in SUBJECTS.items():
+        cells_html = ""
+        decision_made = False
+        for i, decision in enumerate(run[subject_id]):
+            post_link = f"/posts/{subject_id}#{i}"
+            if decision_made:
+                cells_html += f"""
+                    <td>
+                        <a href="{post_link}"
+                            target="_blank"
+                            style="color: lightgray">{int(decision)}</a>
+                    </td>
+                """
+            else:
+                cells_html += f"""
+                    <td>
+                        <a href="{post_link}"
+                            target="_blank">{int(decision)}</a>
+                    </td>
+                """
+            if decision == 1:
+                decision_made = True
+        rows_html += f"""
+            <tr>
+                <td>{subject_id}</td>
+                <td>{int(subject.label)}</td>
+                {cells_html}
+            </tr>
+        """
+
+    return f"""
+        <!DOCTYPE html>
+        <html>
+            <head>
+                <title>Evaluation results</title>
+            </head>
+            <body style="font-family: sans-serif">
+                <h1>Run {run_number}</h2>
+                <table>
+                    {rows_html}
+                </table>
             </body>
         </html>
     """
