@@ -84,16 +84,16 @@ def submit(args):
 
         # Predict and post results
         for run, model in enumerate(run_models):
-            predictions = model.predict(
+            decisions = model.decide(
                 [subjects[subject_id] for subject_id in subject_ids]
             )
             data = [
                 {
                     "nick": subject_id,
-                    "decision": 0 if prediction < 0.5 else 1,
-                    "score": prediction,
+                    "decision": decision,
+                    "score": score,
                 }
-                for subject_id, prediction in zip(subject_ids, predictions)
+                for subject_id, (decision, score) in zip(subject_ids, decisions)
             ]
             requests.post(f"{args.api}/submit/{args.team_token}/{run}", json=data)
 
