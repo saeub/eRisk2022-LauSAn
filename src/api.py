@@ -23,7 +23,7 @@ SUBJECTS = {
     for subject in (data.parse_subject(filename) for filename in args.subjects)
 }
 number = 0
-runs = [{subject_id: [] for subject_id in SUBJECTS} for _ in range(NUM_RUNS)]
+runs = [{subject: [] for subject in SUBJECTS.values()} for _ in range(NUM_RUNS)]
 
 app = Flask(__name__)
 
@@ -62,7 +62,7 @@ def submit(team_token, run_number):
         assert isinstance(
             score, float
         ), f"Score has type {type(score)}, should be a float"
-        runs[run_number][nick].append((bool(decision), score))
+        runs[run_number][SUBJECTS[nick]].append((bool(decision), score))
     global number
     number += 1
     return jsonify(None)
@@ -72,15 +72,9 @@ def submit(team_token, run_number):
 def results():
     runs_html = ""
     for run_number, run in enumerate(runs):
-        decisions = {
-            subject_id: [decision for (decision, score) in predictions]
-            for subject_id, predictions in run.items()
-        }
-        erde_5 = evaluation.mean_erde(decisions, SUBJECTS.values(), o=5)
-        erde_50 = evaluation.mean_erde(decisions, SUBJECTS.values(), o=50)
-        recall, precision, f1 = evaluation.recall_precision_f1(
-            decisions, SUBJECTS.values()
-        )
+        erde_5 = evaluation.mean_erde(run, o=5)
+        erde_50 = evaluation.mean_erde(run, o=50)
+        recall, precision, f1 = evaluation.recall_precision_f1(run)
         metrics_html = f"""
             <ul>
                 <li><i>ERDE<sub>5</sub></i> = {erde_5}</li>
@@ -121,11 +115,11 @@ def results_run(run_number):
             {"".join(f'<th>{i}</th>' for i in range(max_num_posts))}
         </tr>
     """
-    for subject_id, subject in SUBJECTS.items():
+    for subject in SUBJECTS.values():
         cells_html = ""
         decision_made = False
-        for i, (decision, score) in enumerate(run[subject_id]):
-            post_link = f"/posts/{subject_id}#{i}"
+        for i, (decision, score) in enumerate(run[subject]):
+            post_link = f"/posts/{subject.id}#{i}"
             if decision_made:
                 cells_html += f"""
                     <td>
@@ -147,7 +141,7 @@ def results_run(run_number):
                 decision_made = True
         rows_html += f"""
             <tr>
-                <td>{subject_id}</td>
+                <td>{subject.id}</td>
                 <td>{int(subject.label)}</td>
                 {cells_html}
             </tr>

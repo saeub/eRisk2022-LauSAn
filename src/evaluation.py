@@ -1,8 +1,11 @@
-from typing import Collection, Dict, Sequence
+from typing import Callable, Dict, Sequence, Tuple
 
 import numpy as np
 
 from data import Subject
+
+Run = Dict[Subject, Sequence[Tuple[bool, float]]]
+Metric = Callable[[Run], float]
 
 
 def erde(decisions: Sequence[bool], truth: bool, o: float = 5) -> float:
@@ -34,23 +37,22 @@ def erde(decisions: Sequence[bool], truth: bool, o: float = 5) -> float:
         return 0.0
 
 
-def mean_erde(
-    decisions: Dict[str, Sequence[bool]], subjects: Collection[Subject], o: float = 5
-) -> float:
+def mean_erde(run: Run, o: float = 5) -> float:
     results = []
-    for subject in subjects:
-        results.append(erde(decisions[subject.id], subject.label, o=o))
+    for subject, predictions in run.items():
+        decisions = [decision for decision, score in predictions]
+        results.append(
+            erde(decisions, subject.label, o=o)
+        )
     return np.mean(results)
 
 
-def recall_precision_f1(
-    decisions: Dict[str, Sequence[bool]], subjects: Collection[Subject]
-) -> float:
+def recall_precision_f1(run: Run) -> float:
     tp = 0
     fp = 0
     fn = 0
-    for subject in subjects:
-        decision = any(decision is True for decision in decisions[subject.id])
+    for subject in run:
+        decision = any(decision is True for decision, score in run[subject])
         truth = subject.label
 
         if decision is True and truth is True:

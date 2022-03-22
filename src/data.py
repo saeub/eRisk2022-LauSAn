@@ -19,6 +19,9 @@ class Subject:
     posts: List[Post]
     label: Optional[bool]
 
+    def __hash__(self) -> int:
+        return hash(self.id)
+
 
 def parse_subject(filename: str) -> Subject:
     individual = ET.parse(filename)
