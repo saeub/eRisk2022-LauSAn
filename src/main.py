@@ -1,12 +1,23 @@
 import argparse
 from datetime import datetime
+import logging
+import sys
 
 import dateutil.parser
 import requests
 from tqdm import tqdm
 
+import evaluation
 import models
 from data import Post, Subject, parse_subject
+
+logger = logging.getLogger()
+logger.setLevel(logging.INFO)
+log_handler = logging.StreamHandler(sys.stderr)
+log_handler.setFormatter(
+    logging.Formatter("[{asctime}] {levelname}: {message}", style="{")
+)
+logger.addHandler(log_handler)
 
 
 def parse_args() -> argparse.Namespace:
@@ -21,6 +32,11 @@ def parse_args() -> argparse.Namespace:
         "model_class", choices=model_classes, help="Type of model."
     )
     train_parser.add_argument("subjects", nargs="*", help="Training subject XML files.")
+    train_parser.add_argument(
+        "--optimize-threshold-scheduler",
+        action="store_true",
+        help="Also optimize the threshold scheduler parameters.",
+    )
     train_parser.add_argument(
         "--save-path", help="File name for storing the trained model."
     )
@@ -44,12 +60,20 @@ def parse_args() -> argparse.Namespace:
 
 def train(args):
     model: models.Model = args.model_class()
+    logger.info("Loading data...")
     subjects = [parse_subject(filename) for filename in args.subjects]
+    logger.info("Training model...")
     model.train(subjects)
+    if args.optimize_threshold_scheduler:
+        logger.info("Optimizing threshold scheduler...")
+        model.optimize_threshold_scheduler(
+            subjects, evaluation.mean_erde_5, minimize=True
+        )
     save_path = (
         args.save_path
         or f"{args.model_class.__name__}_{datetime.now().isoformat()}.pickle"
     )
+    logger.info(f"Saving model to {save_path}...")
     models.save(model, save_path)
 
 

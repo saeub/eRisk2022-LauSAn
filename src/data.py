@@ -19,6 +19,9 @@ class Subject:
     posts: List[Post]
     label: Optional[bool]
 
+    def __str__(self) -> str:
+        return f"<Subject '{self.id}' ({self.label})>"
+
     def __hash__(self) -> int:
         return hash(self.id)
 

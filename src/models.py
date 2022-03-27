@@ -3,24 +3,75 @@ import random
 import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Collection, List, Sequence, Tuple
+from typing import Any, Collection, Dict, List, Sequence, Tuple
 
 import numpy as np
 import sklearn.linear_model
 import torch
 import transformers
 
-from data import Subject
-from threshold_schedulers import ThresholdScheduler, ExponentialThresholdScheduler
+import evaluation
+from data import Post, Subject
+from threshold_schedulers import (
+    ConstantThresholdScheduler,
+    ThresholdScheduler,
+)
 
 DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
 
 
 class Model(ABC):
-    def __init__(self, threshold_scheduler: ThresholdScheduler = None):
+    def __init__(self, threshold_scheduler: ThresholdScheduler):
         if threshold_scheduler is None:
-            threshold_scheduler = ExponentialThresholdScheduler(0.5, 1.0, 20)
-        self._threshold_scheduler = threshold_scheduler
+            threshold_scheduler = ConstantThresholdScheduler(0.0)
+        self.threshold_scheduler = threshold_scheduler
+
+    def optimize_threshold_scheduler(
+        self,
+        subjects: Collection[Subject],
+        metric: evaluation.Metric,
+        minimize: bool = False,
+    ):
+        """
+        Optimize the threshold scheduler's parameters.
+
+        This works by predicting scores for training subjects as if it was a real run,
+        and then letting the ThresholdScheduler find the best parameters based on those
+        scores and modify itself in-place.
+        """
+        subjects = list(subjects)
+        run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
+        run = {subject: [] for subject in run_subjects}
+
+        while True:
+            any_posts_left = False
+            # Copy over posts from `subjects` to `run_subjects` one by one
+            for subject, run_subject in zip(subjects, run_subjects):
+                if len(subject.posts) > len(run_subject.posts):
+                    run_subject.posts.append(subject.posts[len(run_subject.posts)])
+                    any_posts_left = True
+            if not any_posts_left:
+                break
+
+            # Predict using the post histories up to this point, add scores to `run`
+            run_subjects_to_predict = [
+                subject
+                for subject in run_subjects
+                if len(subject.posts) > len(run[subject])
+            ]
+            decisions = self.decide(run_subjects_to_predict)
+            for subject, decision in zip(run_subjects_to_predict, decisions):
+                run[subject].append(decision)
+
+        self.threshold_scheduler.grid_search(
+            self.threshold_scheduler_grid_search_parameters(),
+            run,
+            metric,
+            minimize=minimize,
+        )
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {}
 
     @abstractmethod
     def train(self, subjects: Collection[Subject]):
@@ -33,16 +84,19 @@ class Model(ABC):
     def decide(self, subjects: Sequence[Subject]) -> List[Tuple[bool, float]]:
         scores = self.predict(subjects)
         return [
-            (self._threshold_scheduler.decide(score, len(subject.posts) - 1), score)
+            (self.threshold_scheduler.decide(score, len(subject.posts) - 1), score)
             for subject, score in zip(subjects, scores)
         ]
 
 
 class RandomBaseline(Model):
-    def __init__(self, positive_ratio: float = 0.125, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, positive_ratio: float = 0.125):
+        super().__init__(ConstantThresholdScheduler(1 - positive_ratio))
         self.positive_ratio = positive_ratio
         self.subject_predictions = {}
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {}
 
     def train(self, subjects: Collection[Subject]):
         pass
@@ -51,35 +105,38 @@ class RandomBaseline(Model):
         predictions = []
         for subject in subjects:
             predictions.append(
-                self.subject_predictions.setdefault(
-                    subject.id, float(random.random() < self.positive_ratio)
-                )
+                self.subject_predictions.setdefault(subject.id, random.random())
             )
         return predictions
 
 
 class VocabularyBaseline(Model):
-    def __init__(self, vocab_size: int = 200, min_count: int = 10, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, vocab_size: int = 200, min_count: int = 10):
+        super().__init__(threshold_scheduler=ConstantThresholdScheduler(0.5))
         self.vocab_size = vocab_size
         self.min_count = min_count
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "threshold": np.arange(0, 1, 0.1),
+        }
 
     @classmethod
     def _tokenize(cls, text: str) -> List[str]:
         return re.findall(r"\w+", text)
 
     @classmethod
-    def _word_counts(cls, subjects: Collection[Subject]):
+    def _word_counts(cls, subjects: Collection[Subject]) -> Dict[str, int]:
         counts = defaultdict(int)
         for subject in subjects:
             for post in subject.posts:
-                for word in cls._tokenize(post.text):
+                for word in cls._tokenize(post.title + " " + post.text):
                     counts[word] += 1
         return counts
 
     def train(self, subjects: Collection[Subject]):
-        neg_subjects = [subject for subject in subjects if subject.label is False]
-        pos_subjects = [subject for subject in subjects if subject.label is True]
+        neg_subjects = [subject for subject in subjects if not subject.label]
+        pos_subjects = [subject for subject in subjects if subject.label]
         neg_counts = self._word_counts(neg_subjects)
         neg_total = sum(neg_counts.values())
         pos_counts = self._word_counts(pos_subjects)
@@ -114,9 +171,8 @@ class BertEmbeddingClassifier(Model):
         self,
         layers: Collection[str] = (-4, -3, -2, -1),
         model_name: str = "bert-base-uncased",
-        **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(ConstantThresholdScheduler(0.5))
         self.layers = layers
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
         self._model = transformers.AutoModel.from_pretrained(
@@ -124,32 +180,37 @@ class BertEmbeddingClassifier(Model):
         ).to(DEVICE)
         self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
 
-    def _get_embeddings(self, text: str) -> torch.Tensor:
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "threshold": np.arange(0, 1.1, 0.1),
+        }
+
+    def _encode_post(self, post: Post) -> torch.Tensor:
+        text = post.title + " " + post.text
         tokens = self._tokenizer.encode(text, return_tensors="pt", truncation=True).to(
             DEVICE
         )
         with torch.no_grad():
             states = self._model(tokens).hidden_states
         embeddings = torch.stack([states[i] for i in self.layers]).sum(0).squeeze()
-        return embeddings.cpu()
-
-    def _encode_subject(self, subject: Subject) -> torch.Tensor:
-        text = subject.posts[-1].text
-        embeddings = self._get_embeddings(text)
-        return embeddings.mean(0)  # TODO: Try other aggregations
+        return embeddings.mean(0).cpu()  # TODO: Try other aggregations
 
     def train(self, subjects: Collection[Subject]):
         X = []
         y = []
         for subject in subjects:
-            x = self._encode_subject(subject)
-            X.append(x)
-            y.append(float(subject.label))
+            for post in subject.posts:
+                x = self._encode_post(post)
+                X.append(x)
+                y.append(float(subject.label))
         self._classifier.fit(torch.stack(X), y)
 
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
-        X = torch.stack([self._encode_subject(subject) for subject in subjects])
-        y_pred = self._classifier.predict(X)
+        X = []
+        for subject in subjects:
+            x = self._encode_post(subject.posts[-1])
+            X.append(x)
+        y_pred = self._classifier.decision_function(torch.stack(X))
         return y_pred
 
 
