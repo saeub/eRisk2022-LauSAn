@@ -31,7 +31,7 @@ def parse_args() -> argparse.Namespace:
     train_parser.add_argument(
         "model_class", choices=model_classes, help="Type of model."
     )
-    train_parser.add_argument("subjects", nargs="*", help="Training subject XML files.")
+    train_parser.add_argument("subjects", nargs="+", help="Training subject XML files.")
     train_parser.add_argument(
         "--optimize-threshold-scheduler",
         action="store_true",

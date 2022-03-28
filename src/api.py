@@ -10,7 +10,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("subjects", nargs="*", help="Test subject XML files.")
+    parser.add_argument("subjects", nargs="+", help="Test subject XML files.")
     parser.add_argument("--port", type=int, default=5000, help="Server port.")
     return parser.parse_args()
 
