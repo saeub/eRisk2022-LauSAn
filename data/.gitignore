@@ -1,2 +1,2 @@
-*
-!.gitignore
+/training_t2/
+.gitignore
