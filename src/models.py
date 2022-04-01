@@ -9,11 +9,14 @@ import numpy as np
 import sklearn.linear_model
 import torch
 import transformers
+from tqdm import tqdm
 
 import evaluation
 from data import Post, Subject
+from log import logger
 from threshold_schedulers import (
     ConstantThresholdScheduler,
+    ExponentialThresholdScheduler,
     ThresholdScheduler,
 )
 
@@ -39,6 +42,7 @@ class Model(ABC):
         and then letting the ThresholdScheduler find the best parameters based on those
         scores and modify itself in-place.
         """
+        logger.info(f"({self.__class__.__name__}) Predicting run...")
         subjects = list(subjects)
         run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
         run = {subject: [] for subject in run_subjects}
@@ -63,6 +67,7 @@ class Model(ABC):
             for subject, decision in zip(run_subjects_to_predict, decisions):
                 run[subject].append(decision)
 
+        logger.info(f"({self.__class__.__name__}) Performing grid search...")
         self.threshold_scheduler.grid_search(
             self.threshold_scheduler_grid_search_parameters(),
             run,
@@ -172,7 +177,7 @@ class BertEmbeddingClassifier(Model):
         layers: Collection[str] = (-4, -3, -2, -1),
         model_name: str = "bert-base-uncased",
     ):
-        super().__init__(ConstantThresholdScheduler(0.5))
+        super().__init__(ExponentialThresholdScheduler(0, 2, 10))
         self.layers = layers
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
         self._model = transformers.AutoModel.from_pretrained(
@@ -182,7 +187,9 @@ class BertEmbeddingClassifier(Model):
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "threshold": np.arange(0, 1.1, 0.1),
+            "start_threshold": np.arange(-10, 5, 1),
+            "target_threshold": np.arange(-5, 10, 1),
+            "time_constant": np.arange(1, 10, 1),
         }
 
     def _encode_post(self, post: Post) -> torch.Tensor:
@@ -196,13 +203,15 @@ class BertEmbeddingClassifier(Model):
         return embeddings.mean(0).cpu()  # TODO: Try other aggregations
 
     def train(self, subjects: Collection[Subject]):
+        logger.info(f"({self.__class__.__name__}) Encoding posts...")
         X = []
         y = []
-        for subject in subjects:
+        for subject in tqdm(subjects):
             for post in subject.posts:
                 x = self._encode_post(post)
                 X.append(x)
                 y.append(float(subject.label))
+        logger.info(f"({self.__class__.__name__}) Fitting classifier...")
         self._classifier.fit(torch.stack(X), y)
 
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:

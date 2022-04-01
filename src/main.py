@@ -1,7 +1,9 @@
 import argparse
-from datetime import datetime
-import logging
 import sys
+import csv
+import re
+from datetime import datetime
+from textwrap import dedent
 
 import dateutil.parser
 import requests
@@ -10,14 +12,7 @@ from tqdm import tqdm
 import evaluation
 import models
 from data import Post, Subject, parse_subject
-
-logger = logging.getLogger()
-logger.setLevel(logging.INFO)
-log_handler = logging.StreamHandler(sys.stderr)
-log_handler.setFormatter(
-    logging.Formatter("[{asctime}] {levelname}: {message}", style="{")
-)
-logger.addHandler(log_handler)
+from log import logger
 
 
 def parse_args() -> argparse.Namespace:
@@ -33,12 +28,24 @@ def parse_args() -> argparse.Namespace:
     )
     train_parser.add_argument("subjects", nargs="+", help="Training subject XML files.")
     train_parser.add_argument(
-        "--optimize-threshold-scheduler",
-        action="store_true",
-        help="Also optimize the threshold scheduler parameters.",
-    )
-    train_parser.add_argument(
         "--save-path", help="File name for storing the trained model."
+    )
+
+    optimize_threshold_parser = subparsers.add_parser(
+        "optimize-threshold", **parser_kwargs
+    )
+    optimize_threshold_parser.add_argument("model", help="Path to saved model.")
+    optimize_threshold_parser.add_argument(
+        "subjects", nargs="+", help="Training subject XML files."
+    )
+    optimize_threshold_parser.add_argument(
+        "--metric",
+        choices=["erde5", "erde50", "f1"],
+        default="erde5",
+        help="Metric to optimize for.",
+    )
+    optimize_threshold_parser.add_argument(
+        "--save-path", help="File name for storing the optimized model."
     )
 
     submit_parser = subparsers.add_parser("submit", **parser_kwargs)
@@ -50,6 +57,14 @@ def parse_args() -> argparse.Namespace:
     )
     submit_parser.add_argument(
         "--team-token", default="dummy_token", help="Team token for submission API."
+    )
+
+    info_parser = subparsers.add_parser("info", **parser_kwargs)
+    info_parser.add_argument("model", help="Path to saved model.")
+    info_parser.add_argument(
+        "--threshold",
+        action="store_true",
+        help="Print only results from threshold scheduler grid search in CSV format.",
     )
 
     args = parser.parse_args()
@@ -64,14 +79,28 @@ def train(args):
     subjects = [parse_subject(filename) for filename in args.subjects]
     logger.info("Training model...")
     model.train(subjects)
-    if args.optimize_threshold_scheduler:
-        logger.info("Optimizing threshold scheduler...")
-        model.optimize_threshold_scheduler(
-            subjects, evaluation.mean_erde_5, minimize=True
-        )
     save_path = (
         args.save_path
         or f"{args.model_class.__name__}_{datetime.now().isoformat()}.pickle"
+    )
+    logger.info(f"Saving model to {save_path}...")
+    models.save(model, save_path)
+
+
+def optimize_threshold(args):
+    logger.info("Loading model...")
+    model = models.load(args.model)
+    logger.info("Loading data...")
+    subjects = [parse_subject(filename) for filename in args.subjects]
+    logger.info("Optimizing threshold scheduler...")
+    metric = {
+        "erde5": (evaluation.mean_erde_5, True),
+        "erde50": (evaluation.mean_erde_50, True),
+        "f1": (evaluation.f1, False),
+    }[args.metric]
+    model.optimize_threshold_scheduler(subjects, *metric)
+    save_path = (
+        args.save_path or re.sub(r".pickle$", "", args.model) + ".optimized.pickle"
     )
     logger.info(f"Saving model to {save_path}...")
     models.save(model, save_path)
@@ -114,7 +143,7 @@ def submit(args):
             data = [
                 {
                     "nick": subject_id,
-                    "decision": decision,
+                    "decision": bool(decision),
                     "score": score,
                 }
                 for subject_id, (decision, score) in zip(subject_ids, decisions)
@@ -122,11 +151,38 @@ def submit(args):
             requests.post(f"{args.api}/submit/{args.team_token}/{run}", json=data)
 
 
+def info(args):
+    model = models.load(args.model)
+    if args.threshold:
+        if model.threshold_scheduler.grid_search_results:
+            grid_search_results = model.threshold_scheduler.grid_search_results
+            writer = csv.DictWriter(sys.stdout, [*grid_search_results[0][0], "metric"])
+            writer.writeheader()
+            for attr_values, result in grid_search_results:
+                writer.writerow({**attr_values, "metric": result})
+        else:
+            print("This model's threshold scheduler is not optimized.", sys.stderr)
+            exit(1)
+    else:
+        print(
+            dedent(
+                f"""\
+                    Type: {model.__class__.__name__}
+                    Threshold scheduler: {model.threshold_scheduler!r}
+                """.rstrip()
+            )
+        )
+
+
 if __name__ == "__main__":
     args = parse_args()
     if args.command == "train":
         train(args)
+    elif args.command == "optimize-threshold":
+        optimize_threshold(args)
     elif args.command == "submit":
         submit(args)
+    elif args.command == "info":
+        info(args)
     else:
         raise NotImplementedError(f"Command {args.command} not implemented")
