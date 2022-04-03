@@ -11,13 +11,16 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument("subjects", nargs="+", help="Test subject XML files.")
+    parser.add_argument(
+        "--runs", type=int, default=1, help="Number of runs expected to be submitted."
+    )
     parser.add_argument("--port", type=int, default=5000, help="Server port.")
     return parser.parse_args()
 
 
 args = parse_args()
 
-NUM_RUNS = 1
+NUM_RUNS = args.runs
 SUBJECTS = {
     subject.id: subject
     for subject in (data.parse_subject(filename) for filename in args.subjects)
@@ -67,16 +70,13 @@ def submit(team_token, run_number):
         ), f"Score has type {type(score)}, should be a float"
         runs[run_number][SUBJECTS[nick]].append((bool(decision), score))
     for run in runs:
-        if any(
-            len(run[subject]) <= number
-            for subject in remaining_subjects
-        ):
+        if any(len(run[subject]) <= number for subject in remaining_subjects):
             # This run is not submitted yet
             break
     else:
         # All runs submitted
-    global number
-    number += 1
+        global number
+        number += 1
     return jsonify(None)
 
 
