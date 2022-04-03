@@ -6,7 +6,9 @@ from collections import defaultdict
 from typing import Any, Collection, Dict, List, Sequence, Tuple
 
 import numpy as np
+import sklearn.feature_extraction
 import sklearn.linear_model
+import sklearn.naive_bayes
 import torch
 import transformers
 from tqdm import tqdm
@@ -171,11 +173,48 @@ class VocabularyBaseline(Model):
         return predictions
 
 
+class NBClassifier(Model):
+    def __init__(self, max_features: int = 1000):
+        super().__init__(ExponentialThresholdScheduler(0.1, 0.5, 10))
+        self._classifier = sklearn.naive_bayes.MultinomialNB()
+        self._vectorizer = sklearn.feature_extraction.text.TfidfVectorizer(
+            max_features=max_features
+        )
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "start_threshold": np.arange(0.0, 0.5, 0.05),
+            "target_threshold": np.arange(0.0, 0.7, 0.05),
+            "time_constant": np.arange(1, 10, 1),
+        }
+
+    def train(self, subjects: Collection[Subject]):
+        logger.info(f"({self.__class__.__name__}) Vectorizing posts...")
+        X_texts = []
+        y = []
+        for subject in subjects:
+            for post in subject.posts:
+                X_texts.append(post.title + " " + post.text)
+                y.append(int(subject.label))
+        X = self._vectorizer.fit_transform(X_texts).toarray()
+        logger.info(f"({self.__class__.__name__}) Fitting classifier...")
+        self._classifier.fit(X, y)
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        X_texts = []
+        for subject in subjects:
+            post = subject.posts[-1]
+            X_texts.append(post.title + " " + post.text)
+        X = self._vectorizer.transform(X_texts).toarray()
+        y_pred = self._classifier.predict_proba(X)[:, 1]
+        return y_pred
+
+
 class BertEmbeddingClassifier(Model):
     def __init__(
         self,
-        layers: Collection[str] = (-4, -3, -2, -1),
         model_name: str = "bert-base-uncased",
+        layers: Collection[str] = (-4, -3, -2, -1),
     ):
         super().__init__(ExponentialThresholdScheduler(0, 2, 10))
         self.layers = layers
@@ -210,7 +249,7 @@ class BertEmbeddingClassifier(Model):
             for post in subject.posts:
                 x = self._encode_post(post)
                 X.append(x)
-                y.append(float(subject.label))
+                y.append(int(subject.label))
         logger.info(f"({self.__class__.__name__}) Fitting classifier...")
         self._classifier.fit(torch.stack(X), y)
 

@@ -100,7 +100,7 @@ def optimize_threshold(args):
     }[args.metric]
     model.optimize_threshold_scheduler(subjects, *metric)
     save_path = (
-        args.save_path or re.sub(r".pickle$", "", args.model) + ".optimized.pickle"
+        args.save_path or re.sub(r".pickle$", "", args.model) + f".optimized_{args.metric}.pickle"
     )
     logger.info(f"Saving model to {save_path}...")
     models.save(model, save_path)
