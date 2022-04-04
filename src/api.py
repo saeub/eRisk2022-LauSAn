@@ -92,6 +92,9 @@ def results():
         erde_5 = evaluation.mean_erde(run, o=5)
         erde_50 = evaluation.mean_erde(run, o=50)
         recall, precision, f1 = evaluation.recall_precision_f1(run)
+        latency = evaluation.latency(run)
+        speed = evaluation.speed(run)
+        latency_f1 = evaluation.latency_f1(run)
         metrics_html = f"""
             <ul>
                 <li><i>ERDE<sub>5</sub></i> = {erde_5}</li>
@@ -99,6 +102,9 @@ def results():
                 <li><i>R</i> = {recall}</li>
                 <li><i>P</i> = {precision}</li>
                 <li><i>F<sub>1</sub></i> = {f1}</li>
+                <li><i>latency</i> = {latency}</li>
+                <li><i>speed</i> = {speed}</li>
+                <li><i>latency-weighted F<sub>1</sub></i> = {latency_f1}</li>
             </ul>
         """
 

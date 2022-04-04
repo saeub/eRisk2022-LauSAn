@@ -1,6 +1,5 @@
 import argparse
 import csv
-import random
 import re
 import sys
 from datetime import datetime
@@ -49,7 +48,7 @@ def parse_args() -> argparse.Namespace:
     )
     optimize_threshold_parser.add_argument(
         "--metric",
-        choices=["erde5", "erde50", "f1"],
+        choices=evaluation.METRICS,
         default="erde5",
         help="Metric to optimize for.",
     )
@@ -107,12 +106,8 @@ def optimize_threshold(args):
     logger.info("Loading data...")
     subjects = [parse_subject(filename.strip()) for filename in args.data]
     logger.info("Optimizing threshold scheduler...")
-    metric = {
-        "erde5": (evaluation.mean_erde_5, True),
-        "erde50": (evaluation.mean_erde_50, True),
-        "f1": (evaluation.f1, False),
-    }[args.metric]
-    model.optimize_threshold_scheduler(subjects, *metric)
+    metric, minimize = evaluation.METRICS[args.metric]
+    model.optimize_threshold_scheduler(subjects, metric, minimize)
     save_path = (
         args.save_path or re.sub(r".pickle$", "", args.model) + ".optimized.pickle"
     )
