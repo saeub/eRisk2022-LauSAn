@@ -10,7 +10,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("subjects", nargs="+", help="Test subject XML files.")
+    parser.add_argument(
+        "--data",
+        type=argparse.FileType("r"),
+        required=True,
+        help="Text file containing paths to test subject XML files.",
+    )
     parser.add_argument(
         "--runs", type=int, default=1, help="Number of runs expected to be submitted."
     )
@@ -23,7 +28,7 @@ args = parse_args()
 NUM_RUNS = args.runs
 SUBJECTS = {
     subject.id: subject
-    for subject in (data.parse_subject(filename) for filename in args.subjects)
+    for subject in (data.parse_subject(filename.strip()) for filename in args.data)
 }
 number = 0
 runs = [{subject: [] for subject in SUBJECTS.values()} for _ in range(NUM_RUNS)]

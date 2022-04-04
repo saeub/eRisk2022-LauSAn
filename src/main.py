@@ -1,7 +1,8 @@
 import argparse
-import sys
 import csv
+import random
 import re
+import sys
 from datetime import datetime
 from textwrap import dedent
 
@@ -26,7 +27,12 @@ def parse_args() -> argparse.Namespace:
     train_parser.add_argument(
         "model_class", choices=model_classes, help="Type of model."
     )
-    train_parser.add_argument("subjects", nargs="+", help="Training subject XML files.")
+    train_parser.add_argument(
+        "--data",
+        type=argparse.FileType("r"),
+        required=True,
+        help="Text file containing paths to training subject XML files.",
+    )
     train_parser.add_argument(
         "--save-path", help="File name for storing the trained model."
     )
@@ -36,7 +42,10 @@ def parse_args() -> argparse.Namespace:
     )
     optimize_threshold_parser.add_argument("model", help="Path to saved model.")
     optimize_threshold_parser.add_argument(
-        "subjects", nargs="+", help="Training subject XML files."
+        "--data",
+        type=argparse.FileType("r"),
+        required=True,
+        help="Text file containing paths to training subject XML files.",
     )
     optimize_threshold_parser.add_argument(
         "--metric",
@@ -76,7 +85,7 @@ def parse_args() -> argparse.Namespace:
 def train(args):
     model: models.Model = args.model_class()
     logger.info("Loading data...")
-    subjects = [parse_subject(filename) for filename in args.subjects]
+    subjects = [parse_subject(filename.strip()) for filename in args.data]
     logger.info("Training model...")
     model.train(subjects)
     save_path = (
@@ -91,7 +100,7 @@ def optimize_threshold(args):
     logger.info("Loading model...")
     model = models.load(args.model)
     logger.info("Loading data...")
-    subjects = [parse_subject(filename) for filename in args.subjects]
+    subjects = [parse_subject(filename.strip()) for filename in args.data]
     logger.info("Optimizing threshold scheduler...")
     metric = {
         "erde5": (evaluation.mean_erde_5, True),
