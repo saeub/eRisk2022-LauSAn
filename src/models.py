@@ -3,7 +3,7 @@ import random
 import re
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import Any, Collection, Dict, List, Sequence, Tuple
+from typing import Any, Collection, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import sklearn.linear_model
@@ -34,6 +34,7 @@ class Model(ABC):
         subjects: Collection[Subject],
         metric: evaluation.Metric,
         minimize: bool = False,
+        sample: Optional[int] = None,
     ):
         """
         Optimize the threshold scheduler's parameters.
@@ -44,6 +45,9 @@ class Model(ABC):
         """
         logger.info(f"({self.__class__.__name__}) Predicting run...")
         subjects = list(subjects)
+        if sample is not None:
+            random.shuffle(subjects)
+            subjects = subjects[:sample]
         run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
         run = {subject: [] for subject in run_subjects}
 
@@ -99,9 +103,6 @@ class RandomBaseline(Model):
         super().__init__(ConstantThresholdScheduler(1 - positive_ratio))
         self.positive_ratio = positive_ratio
         self.subject_predictions = {}
-
-    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
-        return {}
 
     def train(self, subjects: Collection[Subject]):
         pass

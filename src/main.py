@@ -54,6 +54,11 @@ def parse_args() -> argparse.Namespace:
         help="Metric to optimize for.",
     )
     optimize_threshold_parser.add_argument(
+        "--sample",
+        type=int,
+        help="Number of sampled subjects to use.",
+    )
+    optimize_threshold_parser.add_argument(
         "--save-path", help="File name for storing the optimized model."
     )
 
