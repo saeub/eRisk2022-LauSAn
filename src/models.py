@@ -103,6 +103,7 @@ class RandomBaseline(Model):
         super().__init__(ConstantThresholdScheduler(1 - positive_ratio))
         self.positive_ratio = positive_ratio
         self.subject_predictions = {}
+        self._random = random.Random(42)
 
     def train(self, subjects: Collection[Subject]):
         pass
@@ -111,7 +112,7 @@ class RandomBaseline(Model):
         predictions = []
         for subject in subjects:
             predictions.append(
-                self.subject_predictions.setdefault(subject.id, random.random())
+                self.subject_predictions.setdefault(subject.id, self._random.random())
             )
         return predictions
 

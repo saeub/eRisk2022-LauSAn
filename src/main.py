@@ -1,18 +1,26 @@
 import argparse
 import csv
+import random
 import re
 import sys
 from datetime import datetime
 from textwrap import dedent
 
 import dateutil.parser
+import numpy
 import requests
+import torch
 from tqdm import tqdm
 
 import evaluation
 import models
 from data import Post, Subject, parse_subject
 from log import logger
+
+RANDOM_SEED = 42
+random.seed(RANDOM_SEED)
+numpy.random.seed(RANDOM_SEED)
+torch.manual_seed(RANDOM_SEED)
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,6 +98,7 @@ def train(args):
     model: models.Model = args.model_class()
     logger.info("Loading data...")
     subjects = [parse_subject(filename.strip()) for filename in args.data]
+    random.shuffle(subjects)
     logger.info("Training model...")
     model.train(subjects)
     save_path = (
