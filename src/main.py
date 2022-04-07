@@ -1,18 +1,26 @@
 import argparse
-import sys
 import csv
+import random
 import re
+import sys
 from datetime import datetime
 from textwrap import dedent
 
 import dateutil.parser
+import numpy
 import requests
+import torch
 from tqdm import tqdm
 
 import evaluation
 import models
 from data import Post, Subject, parse_subject
 from log import logger
+
+RANDOM_SEED = 42
+random.seed(RANDOM_SEED)
+numpy.random.seed(RANDOM_SEED)
+torch.manual_seed(RANDOM_SEED)
 
 
 def parse_args() -> argparse.Namespace:
@@ -26,7 +34,12 @@ def parse_args() -> argparse.Namespace:
     train_parser.add_argument(
         "model_class", choices=model_classes, help="Type of model."
     )
-    train_parser.add_argument("subjects", nargs="+", help="Training subject XML files.")
+    train_parser.add_argument(
+        "--data",
+        type=argparse.FileType("r"),
+        required=True,
+        help="Text file containing paths to training subject XML files.",
+    )
     train_parser.add_argument(
         "--save-path", help="File name for storing the trained model."
     )
@@ -36,13 +49,21 @@ def parse_args() -> argparse.Namespace:
     )
     optimize_threshold_parser.add_argument("model", help="Path to saved model.")
     optimize_threshold_parser.add_argument(
-        "subjects", nargs="+", help="Training subject XML files."
+        "--data",
+        type=argparse.FileType("r"),
+        required=True,
+        help="Text file containing paths to training subject XML files.",
     )
     optimize_threshold_parser.add_argument(
         "--metric",
-        choices=["erde5", "erde50", "f1"],
+        choices=evaluation.METRICS,
         default="erde5",
         help="Metric to optimize for.",
+    )
+    optimize_threshold_parser.add_argument(
+        "--sample",
+        type=int,
+        help="Number of sampled subjects to use.",
     )
     optimize_threshold_parser.add_argument(
         "--save-path", help="File name for storing the optimized model."
@@ -76,7 +97,8 @@ def parse_args() -> argparse.Namespace:
 def train(args):
     model: models.Model = args.model_class()
     logger.info("Loading data...")
-    subjects = [parse_subject(filename) for filename in args.subjects]
+    subjects = [parse_subject(filename.strip()) for filename in args.data]
+    random.shuffle(subjects)
     logger.info("Training model...")
     model.train(subjects)
     save_path = (
@@ -91,14 +113,10 @@ def optimize_threshold(args):
     logger.info("Loading model...")
     model = models.load(args.model)
     logger.info("Loading data...")
-    subjects = [parse_subject(filename) for filename in args.subjects]
+    subjects = [parse_subject(filename.strip()) for filename in args.data]
     logger.info("Optimizing threshold scheduler...")
-    metric = {
-        "erde5": (evaluation.mean_erde_5, True),
-        "erde50": (evaluation.mean_erde_50, True),
-        "f1": (evaluation.f1, False),
-    }[args.metric]
-    model.optimize_threshold_scheduler(subjects, *metric)
+    metric, minimize = evaluation.METRICS[args.metric]
+    model.optimize_threshold_scheduler(subjects, metric, minimize)
     save_path = (
         args.save_path or re.sub(r".pickle$", "", args.model) + f".optimized_{args.metric}.pickle"
     )

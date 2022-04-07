@@ -5,6 +5,7 @@ import numpy as np
 from tqdm import tqdm
 
 import evaluation
+from log import logger
 
 
 class ThresholdScheduler(ABC):
@@ -20,10 +21,16 @@ class ThresholdScheduler(ABC):
         fixed_attr_values: Optional[Dict[str, Any]] = None,
         progress: tqdm = None,
     ):
+        if len(attr_values) == 0:
+            logger.warn(
+                f"({self.__class__.__name__}) Model class does not define any"
+                "attributes to perform grid search on. Skipping grid search."
+            )
+            return
+
         if fixed_attr_values is None:
             # This is the first level of recursion -> reset everything
             self._grid_search_results = []
-            # TODO: Store initial configuration as result too?
             fixed_attr_values = {}
             num_configurations = np.prod(
                 [len(values) for values in attr_values.values()]

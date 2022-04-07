@@ -10,7 +10,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("subjects", nargs="+", help="Test subject XML files.")
+    parser.add_argument(
+        "--data",
+        type=argparse.FileType("r"),
+        required=True,
+        help="Text file containing paths to test subject XML files.",
+    )
     parser.add_argument(
         "--runs", type=int, default=1, help="Number of runs expected to be submitted."
     )
@@ -23,7 +28,7 @@ args = parse_args()
 NUM_RUNS = args.runs
 SUBJECTS = {
     subject.id: subject
-    for subject in (data.parse_subject(filename) for filename in args.subjects)
+    for subject in (data.parse_subject(filename.strip()) for filename in args.data)
 }
 number = 0
 runs = [{subject: [] for subject in SUBJECTS.values()} for _ in range(NUM_RUNS)]
@@ -87,6 +92,9 @@ def results():
         erde_5 = evaluation.mean_erde(run, o=5)
         erde_50 = evaluation.mean_erde(run, o=50)
         recall, precision, f1 = evaluation.recall_precision_f1(run)
+        latency = evaluation.latency(run)
+        speed = evaluation.speed(run)
+        latency_f1 = evaluation.latency_f1(run)
         metrics_html = f"""
             <ul>
                 <li><i>ERDE<sub>5</sub></i> = {erde_5}</li>
@@ -94,6 +102,9 @@ def results():
                 <li><i>R</i> = {recall}</li>
                 <li><i>P</i> = {precision}</li>
                 <li><i>F<sub>1</sub></i> = {f1}</li>
+                <li><i>latency</i> = {latency}</li>
+                <li><i>speed</i> = {speed}</li>
+                <li><i>latency-weighted F<sub>1</sub></i> = {latency_f1}</li>
             </ul>
         """
 

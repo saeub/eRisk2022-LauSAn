@@ -18,10 +18,10 @@ def erde(decisions: Sequence[bool], truth: bool, o: float) -> float:
         return 1 - 1 / (1 + np.exp(k - o))
 
     try:
-        decision_time = decisions.index(True)
+        delay = decisions.index(True) + 1
         decision = True
     except ValueError:
-        decision_time = None
+        delay = None
         decision = False
 
     if decision and not truth:
@@ -29,7 +29,7 @@ def erde(decisions: Sequence[bool], truth: bool, o: float) -> float:
     if not decision and truth:
         return c_fn
     if decision and truth:
-        return c_tp * lc_o(decision_time)
+        return c_tp * lc_o(delay)
     if not decision and not truth:
         return 0.0
 
@@ -80,3 +80,49 @@ def precision(run: Run) -> float:
 def f1(run: Run) -> float:
     _, _, f1 = recall_precision_f1(run)
     return f1
+
+
+def latency(run: Run) -> float:
+    delays = []
+    for subject in run:
+        decisions = [decision for decision, score in run[subject]]
+        decision = any(decisions)
+        truth = subject.label
+        if decision and truth:
+            delay = decisions.index(True) + 1
+            delays.append(delay)
+    if len(delays) > 0:
+        return np.median(delays)
+    return float("inf")
+
+
+def speed(run: Run) -> float:
+    # Magic number to make penalty(median(post_len)) = 0.5
+    p = 0.0017419306441650182
+
+    penalties = []
+    for subject in run:
+        decisions = [decision for decision, score in run[subject]]
+        decision = any(decisions)
+        truth = subject.label
+        if decision and truth:
+            delay = decisions.index(True) + 1
+            penalty = -1 + 2 / (1 + np.exp(-p * (delay - 1)))
+            penalties.append(penalty)
+    if len(penalties) > 0:
+        return 1 - np.median(penalties)
+    return 0
+
+
+def latency_f1(run: Run):
+    return f1(run) * speed(run)
+
+
+METRICS = {
+    "erde5": (mean_erde_5, True),
+    "erde50": (mean_erde_50, True),
+    "f1": (f1, False),
+    "latency": (latency, True),
+    "speed": (speed, False),
+    "latency-f1": (latency_f1, False),
+}
