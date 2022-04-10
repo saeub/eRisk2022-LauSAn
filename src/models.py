@@ -215,14 +215,14 @@ class NBClassifier(Model):
 class BertEmbeddingClassifier(Model):
     def __init__(
         self,
-        model_name: str = "bert-base-uncased",
+        checkpoint: str = "bert-base-uncased",
         layers: Collection[str] = (-4, -3, -2, -1),
     ):
         super().__init__(ExponentialThresholdScheduler(0, 2, 10))
         self.layers = layers
-        self._tokenizer = transformers.AutoTokenizer.from_pretrained(model_name)
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
         self._model = transformers.AutoModel.from_pretrained(
-            model_name, output_hidden_states=True
+            checkpoint, output_hidden_states=True
         ).to(DEVICE)
         self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
 
@@ -262,6 +262,78 @@ class BertEmbeddingClassifier(Model):
             X.append(x)
         y_pred = self._classifier.decision_function(torch.stack(X))
         return y_pred
+
+
+class TransformersDataset(torch.utils.data.Dataset):
+    def __init__(self, subjects: Sequence[Subject], tokenizer):
+        # TODO: Join sentences with [SEP]?
+        # TODO: Concatenate final posts, truncate from start
+        self.tokenizer = tokenizer
+        self._texts = [
+            self.tokenizer(post.title, post.text, truncation=True)
+            for subject in subjects
+            for post in subject.posts
+        ]
+        self._labels = [
+            int(subject.label) for subject in subjects for _ in subject.posts
+        ]
+
+    def __getitem__(self, index):
+        item = self._texts[index]
+        item["labels"] = self._labels[index]
+        return item
+
+    def __len__(self):
+        return len(self._texts)
+
+
+class WeightedLossTrainer(transformers.Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.get("labels")
+        outputs = model(**inputs)
+        logits = outputs.get("logits")
+        loss_function = torch.nn.CrossEntropyLoss(
+            weight=torch.tensor([1.0, 8.0]).to(DEVICE)
+        )
+        loss = loss_function(
+            logits.view(-1, self.model.config.num_labels), labels.view(-1)
+        )
+        return (loss, outputs) if return_outputs else loss
+
+
+class Roberta(Model):
+    def __init__(self, checkpoint: str = "roberta-base"):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
+        self._tokenizer = transformers.RobertaTokenizer.from_pretrained(checkpoint)
+        self._model = transformers.RobertaForSequenceClassification.from_pretrained(
+            checkpoint, num_labels=2
+        )
+
+    def train(self, subjects: Collection[Subject]):
+        dataset = TransformersDataset(list(subjects), self._tokenizer)
+        trainer = WeightedLossTrainer(
+            model=self._model,
+            args=transformers.TrainingArguments(
+                output_dir="./roberta-checkpoints",
+                save_total_limit=3,
+                num_train_epochs=3,
+            ),
+            train_dataset=dataset,
+            data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
+        )
+        trainer.train()
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        scores = []
+        for subject in subjects:
+            post = subject.posts[-1]
+            item = self._tokenizer(
+                post.title, post.text, truncation=True, return_tensors="pt"
+            )
+            logits = self._model(item.input_ids.to(DEVICE)).logits
+            score = float(torch.softmax(logits, 1)[0, 1])
+            scores.append(score)
+        return scores
 
 
 def save(model: Model, filename: str):
