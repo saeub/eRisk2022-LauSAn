@@ -58,11 +58,8 @@ def getwritings(team_token):
 @app.route("/submit/<team_token>/<int:run_number>", methods=["POST"])
 def submit(team_token, run_number):
     data = request.get_json()
-    remaining_subjects = [
-        subject for subject in SUBJECTS.values() if len(subject.posts) > number
-    ]
     assert len(data) == len(
-        remaining_subjects
+        SUBJECTS
     ), f"Sent decisions for {len(data)} subjects instead of {len(SUBJECTS)}"
     for d in data:
         nick = d["nick"]
@@ -75,7 +72,7 @@ def submit(team_token, run_number):
         ), f"Score has type {type(score)}, should be a float"
         runs[run_number][SUBJECTS[nick]].append((bool(decision), score))
     for run in runs:
-        if any(len(run[subject]) <= number for subject in remaining_subjects):
+        if any(len(run[subject]) <= number for subject in SUBJECTS.values()):
             # This run is not submitted yet
             break
     else:
@@ -142,26 +139,27 @@ def results_run(run_number):
         cells_html = ""
         decision_made = False
         for i, (decision, score) in enumerate(run[subject]):
-            post_link = f"/posts/{subject.id}#{i}"
-            if decision_made:
-                cells_html += f"""
-                    <td>
-                        <a href="{post_link}"
-                           target="_blank"
-                           title="{score}"
-                           style="color: lightgray">{int(decision)}</a>
-                    </td>
-                """
-            else:
-                cells_html += f"""
-                    <td>
-                        <a href="{post_link}"
-                           target="_blank"
-                           title="{score}">{int(decision)}</a>
-                    </td>
-                """
-            if decision == 1:
-                decision_made = True
+            if i < len(subject.posts):
+                post_link = f"/posts/{subject.id}#{i}"
+                if decision_made:
+                    cells_html += f"""
+                        <td>
+                            <a href="{post_link}"
+                            target="_blank"
+                            title="{score}"
+                            style="color: lightgray">{int(decision)}</a>
+                        </td>
+                    """
+                else:
+                    cells_html += f"""
+                        <td>
+                            <a href="{post_link}"
+                            target="_blank"
+                            title="{score}">{int(decision)}</a>
+                        </td>
+                    """
+                if decision == 1:
+                    decision_made = True
         rows_html += f"""
             <tr>
                 <td>{subject.id}</td>

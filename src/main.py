@@ -1,10 +1,14 @@
 import argparse
+import atexit
 import csv
+import json
 import random
 import re
 import sys
 from datetime import datetime
 from textwrap import dedent
+from typing import Collection
+import dataclasses
 
 import dateutil.parser
 import numpy
@@ -21,6 +25,26 @@ RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
 numpy.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
+
+SUBJECTS_JSON_FILENAME = f"subjects_{datetime.now().isoformat()}.json"
+
+
+class SubjectJSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, Subject):
+            return dataclasses.asdict(obj)
+        if isinstance(obj, datetime):
+            return obj.isoformat()
+        return super().default(obj)
+
+
+def _dump_subjects(subjects: Collection[Subject]):
+    with open(SUBJECTS_JSON_FILENAME, "w") as f:
+        json.dump(
+            [dataclasses.asdict(subject) for subject in subjects],
+            f,
+            cls=SubjectJSONEncoder,
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -118,7 +142,8 @@ def optimize_threshold(args):
     metric, minimize = evaluation.METRICS[args.metric]
     model.optimize_threshold_scheduler(subjects, metric, minimize)
     save_path = (
-        args.save_path or re.sub(r".pickle$", "", args.model) + f".optimized_{args.metric}.pickle"
+        args.save_path
+        or re.sub(r".pickle$", "", args.model) + f".optimized_{args.metric}.pickle"
     )
     logger.info(f"Saving model to {save_path}...")
     models.save(model, save_path)
@@ -128,6 +153,10 @@ def submit(args):
     run_models = [models.load(model) for model in args.models]
 
     subjects = {}
+
+    @atexit.register
+    def dump_subjects():
+        _dump_subjects(subjects.values())
 
     progress = None
     while True:
@@ -145,6 +174,10 @@ def submit(args):
         for writing in writings:
             subject_id = writing["nick"]
             subject = subjects.setdefault(subject_id, Subject(subject_id, [], None))
+            assert writing["number"] == len(subject.posts), (
+                "Internal number of posts does not agree with API. Was the submission"
+                "stopped and resumed without importing previous post histories?"
+            )
             subject.posts.append(
                 Post(
                     writing["title"].strip(),
@@ -161,10 +194,20 @@ def submit(args):
             data = [
                 {
                     "nick": subject_id,
-                    "decision": bool(decision),
+                    "decision": int(decision),
                     "score": score,
                 }
                 for subject_id, (decision, score) in zip(subject_ids, decisions)
+            ] + [
+                # Decide "false" for subjects which have no more posts,
+                # as the API expects a decision for every subject every time
+                {
+                    "nick": subject_id,
+                    "decision": 0,
+                    "score": 0.0,
+                }
+                for subject_id in subjects
+                if subject_id not in subject_ids
             ]
             requests.post(f"{args.api}/submit/{args.team_token}/{run}", json=data)
 
