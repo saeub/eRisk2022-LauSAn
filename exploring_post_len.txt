@@ -1,0 +1,64 @@
+Some analysis on the post length in our test+train data:
+
+How many strings are there in this list?
+1076582
+
+-----------------------------
+Metrics for the entire data:
+No. of posts:	 1076582 
+Max. Length:	 8167 
+Min. Length:	 0 
+Mean Length:	 28.099796392657503
+
+-----------------------------
+After cutting off 2% off the data:
+No. of posts:	 1033519 
+Max. Length:	 183 
+Min. Length:	 0 
+Mean Length:	 20.145145856051027
+
+-----------------------------
+After cutting off 5% off the data:
+No. of posts:	 968923 
+Max. Length:	 104 
+Min. Length:	 0 
+Mean Length:	 16.99700285781223
+
+-----------------------------
+After cutting off 10% off the data:
+No. of posts:	 861265 
+Max. Length:	 63 
+Min. Length:	 0 
+Mean Length:	 14.111122592930167
+
+-----------------------------
+After cutting off 25% off the data:
+No. of posts:	 538291 
+Max. Length:	 27 
+Min. Length:	 0 
+Mean Length:	 10.314246383461734
+
+-----------------------------
+-----------------------------
+
+How many of the strings have the length 0? (in percent)
+26.878491373625046
+How many of the strings have the length 8167? (in percent)
+9.288656135807583e-05
+After cutting all the 0s and 5% at the top:
+
+-----------------------------
+After cutting all the 0s and 5% at the top:
+No. of posts:	 733383 
+Max. Length:	 104 
+Min. Length:	 1 
+Mean Length:	 22.455915940238594
+
+-----------------------------
+After cutting all the 0s and 15% at the top:
+No. of posts:	 625725 
+Max. Length:	 45 
+Min. Length:	 1 
+Mean Length:	 14.844070478245236
+
+Process finished with exit code 0
