@@ -265,12 +265,61 @@ class BertEmbeddingClassifier(Model):
 
 
 class TransformersDataset(torch.utils.data.Dataset):
-    def __init__(self, subjects: Sequence[Subject], tokenizer):
-        # TODO: Join sentences with [SEP]?
+    def __init__(
+        self,
+        subjects: Sequence[Subject],
+        tokenizer,
+        undersample_to_ratio: Optional[float] = None,
+    ):
+        """
+        Dataset for use with transformers library.
+
+        Args:
+            subjects: Training subjects (shuffled).
+            tokenizer: Transformers tokenizer for preprocessing.
+            undersample_to_ratio: Ratio of negative to positive samples for
+                undersampling. E.g., `undersample_to_ratio=2.0` would mean training
+                with twice as many negative as positive subjects.
+        """
+        # Undersampling
+        if undersample_to_ratio is not None:
+            num_pos_subjects = num_neg_subjects = 0
+            for subject in subjects:
+                if subject.label:
+                    num_pos_subjects += 1
+                else:
+                    num_neg_subjects += 1
+            neg_ratio_to_delete = (
+                1 - undersample_to_ratio * num_pos_subjects / num_neg_subjects
+            )
+            undersampled_subjects = []
+            i = 0
+            for subject in subjects:
+                if subject.label:
+                    # Keep all positive subjects
+                    undersampled_subjects.append(subject)
+                else:
+                    i += neg_ratio_to_delete
+                    if i >= 1:
+                        # Delete some negative subjects according to ratio
+                        i -= 1
+                    else:
+                        # Keep remaining negative subjects
+                        undersampled_subjects.append(subject)
+            subjects = undersampled_subjects
+
+            num_neg_subjects_after = 0
+            for subject in subjects:
+                if not subject.label:
+                    num_neg_subjects_after += 1
+            logger.info(
+                f"({self.__class__.__name__}) Undersampled {num_neg_subjects} "
+                f"to {num_neg_subjects_after} negative subjects."
+            )
+
         # TODO: Concatenate final posts, truncate from start
-        self.tokenizer = tokenizer
         self._texts = [
-            self.tokenizer(post.title + "||" + post.text, truncation=True)
+            tokenizer(post.title + "||" + post.text, truncation=True)
             for subject in subjects
             for post in subject.posts
         ]
@@ -310,8 +359,10 @@ class Roberta(Model):
         )
 
     def train(self, subjects: Collection[Subject]):
-        dataset = TransformersDataset(list(subjects), self._tokenizer)
-        trainer = WeightedLossTrainer(
+        dataset = TransformersDataset(
+            list(subjects), self._tokenizer, undersample_to_ratio=2.0
+        )
+        trainer = transformers.Trainer(
             model=self._model,
             args=transformers.TrainingArguments(
                 output_dir="./roberta-checkpoints",
