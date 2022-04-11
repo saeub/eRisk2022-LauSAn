@@ -5,6 +5,7 @@ python-dateutil>=2.8,<3
 transformers>=4.17,<5
 torch>=1.10,<2
 scikit-learn>=0.24,<1
+simpletransformers>=0.63.6,<1
 tqdm>=4.63,<5
 requests>=2.27,<3
 Flask>=2.0,<3

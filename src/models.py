@@ -6,6 +6,8 @@ from collections import defaultdict
 from typing import Any, Collection, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
+import pandas as pd
+import simpletransformers.classification
 import sklearn.feature_extraction
 import sklearn.linear_model
 import sklearn.naive_bayes
@@ -380,11 +382,48 @@ class Roberta(Model):
         for subject in subjects:
             post = subject.posts[-1]
             item = self._tokenizer(
-                post.title, post.text, truncation=True, return_tensors="pt"
+                post.title + "||" + post.text, truncation=True, return_tensors="pt"
             )
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
             scores.append(score)
+        return scores
+
+
+class SimpleBert(Model):
+    def __init__(self, checkpoint: str = "distilbert-base-uncased"):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
+        self._model = simpletransformers.classification.ClassificationModel(
+            "distilbert",
+            checkpoint,
+            args=simpletransformers.classification.ClassificationArgs(
+                num_train_epochs=3
+            ),
+        )
+
+    def train(self, subjects: Collection[Subject]):
+        subjects = list(subjects)
+        df = pd.DataFrame(
+            {
+                "text": [
+                    post.title + "||" + post.text
+                    for subject in subjects
+                    for post in subject.posts
+                ],
+                "labels": [
+                    int(subject.label) for subject in subjects for _ in subject.posts
+                ],
+            }
+        )
+        self._model.train_model(df)
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        texts = [
+            post.title + "||" + post.text
+            for subject in subjects
+            for post in subject.posts
+        ]
+        _, scores = self._model.predict(texts)
         return scores
 
 
