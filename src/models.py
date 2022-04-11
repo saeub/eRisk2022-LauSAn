@@ -270,7 +270,7 @@ class TransformersDataset(torch.utils.data.Dataset):
         # TODO: Concatenate final posts, truncate from start
         self.tokenizer = tokenizer
         self._texts = [
-            self.tokenizer(post.title, post.text, truncation=True)
+            self.tokenizer(post.title + "||" + post.text, truncation=True)
             for subject in subjects
             for post in subject.posts
         ]
@@ -302,7 +302,7 @@ class WeightedLossTrainer(transformers.Trainer):
 
 
 class Roberta(Model):
-    def __init__(self, checkpoint: str = "roberta-base"):
+    def __init__(self, checkpoint: str = "distilroberta-base"):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
         self._tokenizer = transformers.RobertaTokenizer.from_pretrained(checkpoint)
         self._model = transformers.RobertaForSequenceClassification.from_pretrained(
@@ -317,6 +317,7 @@ class Roberta(Model):
                 output_dir="./roberta-checkpoints",
                 save_total_limit=3,
                 num_train_epochs=3,
+                logging_steps=500,
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
