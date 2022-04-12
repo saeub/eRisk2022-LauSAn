@@ -132,12 +132,27 @@ def prepare_subject_data(filename, numb_conc: List[int], overlap: int, max_len: 
     # parse subject
     subject = parse_subject(filename)
     subject_id = subject.id
-    subject_texts = [p.text for p in subject.posts]
 
+    # get subject label
     if subject.label == True:
         subject_label = 1
     elif subject.label == False:
         subject_label = 0
+
+    # concatinate title and text -> new text
+    subject_texts = []
+
+    for post in subject.posts:
+        if post.text != "" and post.title != "":
+            text_title = post.title + " " + post.text
+            subject_texts.append(text_title)
+        elif post.text == "" and post.title != "":
+            subject_texts.append(post.title)
+        elif post.text != "" and post.title == "":
+            subject_texts.append(post.text)
+        else:
+            pass
+
 
     # augment text
     augmented_texts = data_augmentation(subject_texts, numb_conc, overlap, max_len)
