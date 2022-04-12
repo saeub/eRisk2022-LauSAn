@@ -18,7 +18,7 @@ from tqdm import tqdm
 
 import evaluation
 import models
-from data import Post, Subject, parse_subject
+from data import Post, Subject, parse_subject, undersample_subjects
 from log import logger
 
 RANDOM_SEED = 42
@@ -63,6 +63,11 @@ def parse_args() -> argparse.Namespace:
         type=argparse.FileType("r"),
         required=True,
         help="Text file containing paths to training subject XML files.",
+    )
+    train_parser.add_argument(
+        "--undersample",
+        type=float,
+        help="Undersample negative subjects towards this ratio (negative to positive).",
     )
     train_parser.add_argument(
         "--save-path", help="File name for storing the trained model."
@@ -120,15 +125,20 @@ def parse_args() -> argparse.Namespace:
 
 def train(args):
     model: models.Model = args.model_class()
+
     logger.info("Loading data...")
     subjects = [parse_subject(filename.strip()) for filename in args.data]
     random.shuffle(subjects)
+    if args.undersample is not None:
+        subjects = undersample_subjects(subjects, args.undersample)
+
     logger.info("Training model...")
     model.train(subjects)
     save_path = (
         args.save_path
         or f"{args.model_class.__name__}_{datetime.now().isoformat()}.pickle"
     )
+
     logger.info(f"Saving model to {save_path}...")
     models.save(model, save_path)
 
@@ -136,8 +146,10 @@ def train(args):
 def optimize_threshold(args):
     logger.info("Loading model...")
     model = models.load(args.model)
+
     logger.info("Loading data...")
     subjects = [parse_subject(filename.strip()) for filename in args.data]
+
     logger.info("Optimizing threshold scheduler...")
     metric, minimize = evaluation.METRICS[args.metric]
     model.optimize_threshold_scheduler(subjects, metric, minimize)
@@ -145,6 +157,7 @@ def optimize_threshold(args):
         args.save_path
         or re.sub(r".pickle$", "", args.model) + f".optimized_{args.metric}.pickle"
     )
+
     logger.info(f"Saving model to {save_path}...")
     models.save(model, save_path)
 
