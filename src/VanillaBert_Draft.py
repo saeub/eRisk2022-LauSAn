@@ -132,12 +132,27 @@ def prepare_subject_data(filename, numb_conc: List[int], overlap: int, max_len: 
     # parse subject
     subject = parse_subject(filename)
     subject_id = subject.id
-    subject_texts = [p.text for p in subject.posts]
 
+    # get subject label
     if subject.label == True:
         subject_label = 1
     elif subject.label == False:
         subject_label = 0
+
+    # concatinate title and text -> new text
+    subject_texts = []
+
+    for post in subject.posts:
+        if post.text != "" and post.title != "":
+            text_title = post.title + " " + post.text
+            subject_texts.append(text_title)
+        elif post.text == "" and post.title != "":
+            subject_texts.append(post.title)
+        elif post.text != "" and post.title == "":
+            subject_texts.append(post.text)
+        else:
+            pass
+
 
     # augment text
     augmented_texts = data_augmentation(subject_texts, numb_conc, overlap, max_len)
@@ -339,26 +354,79 @@ def main():
     train_data = "data/train_set_1_small.txt"
     test_data = "data/test_set_1_small.txt"
 
+    with open(train_data, 'r') as infile:
+        line = infile.readline().rstrip()
+
+    subject = parse_subject(line)
+
+
+    with open(train_data, 'r') as infile:
+        line = infile.readline().rstrip()
+
+    subject = parse_subject(line)
+
+    subject_titles = [p.title for p in subject.posts]
+    subject_texts = [p.text for p in subject.posts]
+
+    text_and_title = []
+
+    for post in subject.posts:
+        if post.text != "" and post.title != "":
+            text_title = post.title + " " + post.text
+            text_and_title.append(text_title)
+        elif post.text == "" and post.title != "":
+            text_and_title.append(post.title)
+        elif post.text != "" and post.title == "":
+            text_and_title.append(post.text)
+        else:
+            pass
+
+
+
+
+
+
+
+    subject_titles = [p.title for p in subject.posts]
+    subject_texts = [p.text for p in subject.posts]
+
+    text_and_title = []
+
+    for post in subject.posts:
+        if post.text != "" and post.title != "":
+            text_title = post.title + " " + post.text
+            text_and_title.append(text_title)
+        elif post.text == "" and post.title != "":
+            text_and_title.append(post.title)
+        elif post.text != "" and post.title == "":
+            text_and_title.append(post.text)
+        else:
+            pass
+
+    print(subject_titles[0])
+    print(subject_texts[0])
+    print(text_and_title[0])
+
     # get lists with file names for training, validation and test set (we need a val set for BERT)
-    train, val, test = get_datasets(train_data, test_data)
+    #train, val, test = get_datasets(train_data, test_data)
 
     # augmentation of training data
     # for each subject, this will concationate 2 posts, 3 posts...50 posts together as long as max length is not met.
-    numbers_to_concatinate = [2, 3, 4, 5, 10, 20, 30, 40, 50, 100]
+    #numbers_to_concatinate = [2, 3, 4, 5, 10, 20, 30, 40, 50, 100]
 
     # prepare data to load into the DataLoader Class
-    train_prepared = prepare_dataset(train, numbers_to_concatinate, 0, 512)
-    val_prepared = prepare_dataset(val, numbers_to_concatinate, 0, 512)  # (list of labels, list of texts)
-    test_prepared = prepare_dataset(test, [5], 0, 512)
+    #train_prepared = prepare_dataset(train, numbers_to_concatinate, 0, 512)
+    #val_prepared = prepare_dataset(val, numbers_to_concatinate, 0, 512)  # (list of labels, list of texts)
+    #test_prepared = prepare_dataset(test, [5], 0, 512)
 
     # Train Model
-    EPOCHS = 5
-    model = BertClassifier()
-    LR = 1e-6
-    training_loop(model, train_prepared, val_prepared, LR, EPOCHS)
+    #EPOCHS = 5
+   # model = BertClassifier()
+    #LR = 1e-6
+    #training_loop(model, train_prepared, val_prepared, LR, EPOCHS)
 
     # Evaluation
-    evaluate(model, test_prepared)
+    #evaluate(model, test_prepared)
 
 
 if __name__ == '__main__':
