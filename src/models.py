@@ -319,9 +319,8 @@ class TransformersDataset(torch.utils.data.Dataset):
                 f"to {num_neg_subjects_after} negative subjects."
             )
 
-        # TODO: Concatenate final posts, truncate from start
         self._texts = [
-            tokenizer(post.title + "||" + post.text, truncation=True)
+            tokenizer(post.title + " " + post.text, truncation=True)
             for subject in subjects
             for post in subject.posts
         ]
@@ -353,7 +352,7 @@ class WeightedLossTrainer(transformers.Trainer):
 
 
 class Roberta(Model):
-    def __init__(self, checkpoint: str = "distilroberta-base"):
+    def __init__(self, checkpoint: str = "roberta-base"):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
         self._tokenizer = transformers.RobertaTokenizer.from_pretrained(checkpoint)
         self._model = transformers.RobertaForSequenceClassification.from_pretrained(
@@ -368,9 +367,8 @@ class Roberta(Model):
             model=self._model,
             args=transformers.TrainingArguments(
                 output_dir="./roberta-checkpoints",
-                save_total_limit=3,
+                save_total_limit=1,
                 num_train_epochs=3,
-                logging_steps=500,
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
@@ -382,7 +380,7 @@ class Roberta(Model):
         for subject in subjects:
             post = subject.posts[-1]
             item = self._tokenizer(
-                post.title + "||" + post.text, truncation=True, return_tensors="pt"
+                post.title + " " + post.text, truncation=True, return_tensors="pt"
             )
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
