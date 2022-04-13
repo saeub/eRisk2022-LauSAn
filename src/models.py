@@ -303,7 +303,7 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
         self._labels = []
 
         for subject in subjects:
-            labels, texts = self.prepare_subject_data(subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512) # TODO change 512 if you use longformer
+            labels, texts = self.prepare_subject_data(subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 4096)
             self._texts.extend([tokenizer(t, truncation=True) for t in texts])
             self._labels.extend(labels)
 
@@ -523,6 +523,7 @@ class Longformer(Model):
                 output_dir="./longformer-checkpoints",
                 save_total_limit=3,
                 num_train_epochs=3, # todo tune epochs, ggf. batch size
+                per_device_train_batch_size=4,
                 logging_steps=500,
                 report_to=None
             ),
