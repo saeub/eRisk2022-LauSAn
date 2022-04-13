@@ -291,8 +291,6 @@ class TransformersDataset(torch.utils.data.Dataset):
         return len(self._texts)
 
 
-
-
 class TransformersConcatinatedDataset(torch.utils.data.Dataset):
     def __init__(
         self,
@@ -301,12 +299,11 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
 
     ):
 
-        # TODO: Concatenate final posts, truncate from start
         self._texts = []
         self._labels = []
 
         for subject in subjects:
-            labels, texts = self.prepare_dataset(subjects, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512)
+            labels, texts = self.prepare_subject_data(subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512) # TODO change 512 if you use longformer
             self._texts.extend([tokenizer(t, truncation=True) for t in texts])
             self._labels.extend(labels)
 
@@ -317,8 +314,6 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self._texts)
-
-
 
     def merge_posts(self, posts, number: int, overlap: int, max_len: int) -> List[str]:
         """
@@ -360,7 +355,6 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
 
         return merged_posts
 
-
     def data_augmentation(self, posts, numbers_concat: List[int], overlap: int, max_len: int) -> List[str]:
         """
         Function to augment the training and validation data.
@@ -381,13 +375,10 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
         # current post + n posts of history
         for n in numbers_concat:
             # TODO: try out if it works better with an overlap (e.g. overlap 10% of n --> more data)
-            for s in self.merge_posts(posts, n, 0, 512):
+            for s in self.merge_posts(posts, n, overlap, max_len):
                 augmented_data.append(s)
 
         return augmented_data
-
-
-
 
     def prepare_subject_data(self, subject, numbers_to_concatinate, overlap, max_len):
         """Takes a filename for a subject and returns two lists:
@@ -398,10 +389,6 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
         :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
         :param max_len: maximal input length for model (e.g. 512 or 4096)
         """
-
-
-        # mapping label
-        labels = {True: 1, False: 0}
 
         subject_id = subject.id
 
@@ -431,28 +418,6 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
         labels = [subject_label] * len(augmented_texts)
 
         return labels, augmented_texts
-
-
-    def prepare_dataset(self, subjects, numb_conc: List[int], overlap: int, max_len: int) -> Tuple[List, List]:
-        """Takes a list of file names (all file names from train or val set) and returns
-      a list of labels and a list of strings that can be fed into the Dataloader class.
-      :param dataset: list of xml file names
-      :param numb_conc: list with numbers that determine how many posts of a subject should be concatinated.
-      :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
-      :param max_len: maximal input length for model (e.g. 512 or 4096)
-      """
-        all_labels = []
-        all_texts = []
-        for subject in subjects:
-            info = self.prepare_subject_data(subject, numb_conc, overlap, max_len)
-            for i in info[0]:
-                all_labels.append(i)
-            for i in info[1]:
-                all_texts.append(i)
-
-        return all_labels, all_texts
-
-
 
 
 
