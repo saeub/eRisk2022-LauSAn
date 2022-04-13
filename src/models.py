@@ -271,54 +271,8 @@ class TransformersDataset(torch.utils.data.Dataset):
         self,
         subjects: Sequence[Subject],
         tokenizer,
-        undersample_to_ratio: Optional[float] = None,
     ):
-        """
-        Dataset for use with transformers library.
-
-        Args:
-            subjects: Training subjects (shuffled).
-            tokenizer: Transformers tokenizer for preprocessing.
-            undersample_to_ratio: Ratio of negative to positive samples for
-                undersampling. E.g., `undersample_to_ratio=2.0` would mean training
-                with twice as many negative as positive subjects.
-        """
-        # Undersampling
-        if undersample_to_ratio is not None:
-            num_pos_subjects = num_neg_subjects = 0
-            for subject in subjects:
-                if subject.label:
-                    num_pos_subjects += 1
-                else:
-                    num_neg_subjects += 1
-            neg_ratio_to_delete = (
-                1 - undersample_to_ratio * num_pos_subjects / num_neg_subjects
-            )
-            undersampled_subjects = []
-            i = 0
-            for subject in subjects:
-                if subject.label:
-                    # Keep all positive subjects
-                    undersampled_subjects.append(subject)
-                else:
-                    i += neg_ratio_to_delete
-                    if i >= 1:
-                        # Delete some negative subjects according to ratio
-                        i -= 1
-                    else:
-                        # Keep remaining negative subjects
-                        undersampled_subjects.append(subject)
-            subjects = undersampled_subjects
-
-            num_neg_subjects_after = 0
-            for subject in subjects:
-                if not subject.label:
-                    num_neg_subjects_after += 1
-            logger.info(
-                f"({self.__class__.__name__}) Undersampled {num_neg_subjects} "
-                f"to {num_neg_subjects_after} negative subjects."
-            )
-
+        # TODO: Concatenate final posts, truncate from start
         self._texts = [
             tokenizer(post.title + " " + post.text, truncation=True)
             for subject in subjects
@@ -335,6 +289,137 @@ class TransformersDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self._texts)
+
+
+class TransformersConcatinatedDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        subjects: Sequence[Subject],
+        tokenizer,
+
+    ):
+
+        self._texts = []
+        self._labels = []
+
+        for subject in subjects:
+            labels, texts = self.prepare_subject_data(subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 4096)
+            self._texts.extend([tokenizer(t, truncation=True) for t in texts])
+            self._labels.extend(labels)
+
+    def __getitem__(self, index):
+        item = self._texts[index]
+        item["labels"] = self._labels[index]
+        return item
+
+    def __len__(self):
+        return len(self._texts)
+
+    def merge_posts(self, posts, number: int, overlap: int, max_len: int) -> List[str]:
+        """
+        Takes a list of strings (list of all posts by one subject) and merges strings
+        in the list according to the specifications from the parameters. The strings are
+        merged in reverse order so that the oldest post is to the right and the newest
+        post is to the left.
+        :param posts: a list of strings (posts by one subject)
+        :param number: the number of strings that should get merged into one string,
+        must be > 0 (e.g. number = 2 will always merge two strings together)
+        :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+        :param max_len: maximal input length for model (e.g. 512 or 4096)
+        """
+
+        merged_posts = []
+        step = number - overlap
+        for i in range(0, len(posts) - 1, step):
+            # put the number of required sentences in a list
+            count = 0  # repeat while loop as many times as the number of sentences we want to concatinate
+            step2 = 0  # counter so it knows which sentence to pick next
+            merged_sentence = []  # list for required sentences that need to be merged together
+
+            while count < number:  # for as many times as the number of sentences we want to concatinate
+                try:
+                    sentence = posts[i + step2]
+                    count += 1  # make one more iteration if the number of required sentence hasn't been reached yet
+                    step2 += 1  # take one sentence to the right next time
+
+                    merged_sentence.append(sentence)
+                except IndexError:
+                    break
+
+            # nur sätze nehmen, bei denen es aufgeht (=duplikate vermeiden) und die ins modell passen
+            if len(merged_sentence) == number:
+                merged_sentence.reverse()  # newest post on the left (will be truncated on the right)
+                merged_sent_str = ' '.join(merged_sentence)
+                if len(merged_sent_str.split()) <= max_len:
+                    merged_posts.append(merged_sent_str)
+
+        return merged_posts
+
+    def data_augmentation(self, posts, numbers_concat: List[int], overlap: int, max_len: int) -> List[str]:
+        """
+        Function to augment the training and validation data.
+        Takes a list of strings and returns concatinations of 2 posts, 3 posts, etc.
+        The newest post is always at the beginning of the string, the oldest at the end.
+        :param posts: a list of strings (posts by one subject)
+        :param numbers_concat: list of integers that determines how many strings should be concatinated.
+        :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+        :param max_len: maximal input length for model (e.g. 512 or 4096)
+        """
+
+        augmented_data = []
+
+        # current post only (no history)
+        for post in posts:
+            augmented_data.append(post)
+
+        # current post + n posts of history
+        for n in numbers_concat:
+            # TODO: try out if it works better with an overlap (e.g. overlap 10% of n --> more data)
+            for s in self.merge_posts(posts, n, overlap, max_len):
+                augmented_data.append(s)
+
+        return augmented_data
+
+    def prepare_subject_data(self, subject, numbers_to_concatinate, overlap, max_len):
+        """Takes a filename for a subject and returns two lists:
+        - list of labels of the same length as the list of augmented posts data
+        - augmented data: list of merged posts
+        :param filename: xml file for a subject
+        :param numb_conc: list with numbers that determine how many posts of a subject should be concatinated.
+        :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+        :param max_len: maximal input length for model (e.g. 512 or 4096)
+        """
+
+        subject_id = subject.id
+
+        # get subject label
+        if subject.label == True:
+            subject_label = 1
+        elif subject.label == False:
+            subject_label = 0
+
+        # concatinate title and text -> new text
+        subject_texts = []
+        for post in subject.posts:
+            if post.text != "" and post.title != "":
+                text_title = post.title + " " + post.text
+                subject_texts.append(text_title)
+            elif post.text == "" and post.title != "":
+                subject_texts.append(post.title)
+            elif post.text != "" and post.title == "":
+                subject_texts.append(post.text)
+            else:
+                pass
+
+        # augment text
+        augmented_texts = self.data_augmentation(subject_texts, numbers_to_concatinate, overlap, max_len)
+
+        # get list with labels which is as long as augmented text list
+        labels = [subject_label] * len(augmented_texts)
+
+        return labels, augmented_texts
+
+
 
 
 class WeightedLossTrainer(transformers.Trainer):
@@ -367,9 +452,7 @@ class Roberta(Model):
         }
 
     def train(self, subjects: Collection[Subject]):
-        dataset = TransformersDataset(
-            list(subjects), self._tokenizer, undersample_to_ratio=2.0
-        )
+        dataset = TransformersDataset(list(subjects), self._tokenizer)
         trainer = transformers.Trainer(
             model=self._model,
             args=transformers.TrainingArguments(
@@ -388,6 +471,46 @@ class Roberta(Model):
             post = subject.posts[-1]
             item = self._tokenizer(
                 post.title + " " + post.text, truncation=True, return_tensors="pt"
+            )
+            logits = self._model(item.input_ids.to(DEVICE)).logits
+            score = float(torch.softmax(logits, 1)[0, 1])
+            scores.append(score)
+        return scores
+
+
+class Longformer(Model):
+    def __init__(self, checkpoint: str = "allenai/longformer-base-4096"):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20)) # todo which value?
+        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(checkpoint)
+        self._model = transformers.LongformerForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+    def train(self, subjects: Collection[Subject]):
+        dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
+        trainer = transformers.Trainer(
+            model = self._model,
+            args = transformers.TrainingArguments(
+                output_dir="./longformer-checkpoints",
+                save_total_limit=3,
+                num_train_epochs=3, # todo tune epochs, ggf. batch size
+                per_device_train_batch_size=4,
+                logging_steps=500,
+                report_to=None
+            ),
+            train_dataset=dataset,
+            data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
+        )
+        logger.info("Fitting Longformer classifier...")
+        trainer.train()
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        scores = []
+        for subject in subjects:
+            concat_post = ""
+            for i in reversed(range(len(subject.posts))):
+                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
+                concat_post += title_w_text
+            item = self._tokenizer(
+                concat_post, truncation=True, return_tensors="pt"
             )
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
