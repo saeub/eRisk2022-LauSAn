@@ -377,6 +377,41 @@ class SimpleBert(Model):
         _, scores = self._model.predict(texts)
         return scores
 
+class Longformer(Model):
+    def __init__(self, checkpoint: str = "allenai/longformer-base-4096"):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20)) # todo which value?
+        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(checkpoint)
+        self._model = transformers.LongformerForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+    def train(self, subjects: Collection[Subject]):
+        dataset = TransformersDataset(list(subjects), self._tokenizer) # todo connect with dataprocessor from Laura
+        trainer = transformers.Trainer(
+            model = self._model,
+            args = transformers.TrainingArguments(
+                output_dir="./longformer-checkpoints",
+                save_total_limit=3,
+                num_train_epochs=3, # todo tune epochs, ggf. batch size
+                logging_steps=500,
+                report_to=None
+            ),
+            train_dataset=dataset, # todo validation dataset add?
+            data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
+        )
+        logger.info("Fitting Longformer classifier...")
+        trainer.train()
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        scores = []
+        for subject in subjects:
+            post = subject.posts[-1] # todo connect with data processor
+            item = self._tokenizer(
+                post.title + " " + post.text, truncation=True, return_tensors="pt"
+            )
+            logits = self._model(item.input_ids.to(DEVICE)).logits
+            score = float(torch.softmax(logits, 1)[0, 1])
+            scores.append(score)
+        return scores
+
 
 def save(model: Model, filename: str):
     with open(filename, "wb") as f:
