@@ -36,6 +36,7 @@ def get_datasets(train_files, test_files) -> Tuple[List, List, List]:
         # train, val split
         train, val = names[:int(len(names) * 0.8)], names[-int(len(names) * 0.2):]
 
+
         for name in train:
             train_data_paths.append(name.rstrip())
         for name in val:
@@ -239,7 +240,7 @@ class BertClassifier(nn.Module):
 
         self.bert = BertModel.from_pretrained('bert-base-cased')
         self.dropout = nn.Dropout(dropout)
-        self.linear = nn.Linear(768, 5)
+        self.linear = nn.Linear(768, 2)
         self.relu = nn.ReLU()
 
     def forward(self, input_id, mask):

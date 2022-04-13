@@ -291,6 +291,172 @@ class TransformersDataset(torch.utils.data.Dataset):
         return len(self._texts)
 
 
+
+
+class TransformersConcatinatedDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        subjects: Sequence[Subject],
+        tokenizer,
+
+    ):
+
+        # TODO: Concatenate final posts, truncate from start
+        self._texts = []
+        self._labels = []
+
+        for subject in subjects:
+            labels, texts = self.prepare_dataset(subjects, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512)
+            self._texts.extend([tokenizer(t) for t in texts])
+            self._labels.extend(labels)
+
+    def __getitem__(self, index):
+        item = self._texts[index]
+        item["labels"] = self._labels[index]
+        return item
+
+    def __len__(self):
+        return len(self._texts)
+
+
+
+    def merge_posts(self, posts, number: int, overlap: int, max_len: int) -> List[str]:
+        """
+        Takes a list of strings (list of all posts by one subject) and merges strings
+        in the list according to the specifications from the parameters. The strings are
+        merged in reverse order so that the oldest post is to the right and the newest
+        post is to the left.
+        :param posts: a list of strings (posts by one subject)
+        :param number: the number of strings that should get merged into one string,
+        must be > 0 (e.g. number = 2 will always merge two strings together)
+        :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+        :param max_len: maximal input length for model (e.g. 512 or 4096)
+        """
+
+        merged_posts = []
+        step = number - overlap
+        for i in range(0, len(posts) - 1, step):
+            # put the number of required sentences in a list
+            count = 0  # repeat while loop as many times as the number of sentences we want to concatinate
+            step2 = 0  # counter so it knows which sentence to pick next
+            merged_sentence = []  # list for required sentences that need to be merged together
+
+            while count < number:  # for as many times as the number of sentences we want to concatinate
+                try:
+                    sentence = posts[i + step2]
+                    count += 1  # make one more iteration if the number of required sentence hasn't been reached yet
+                    step2 += 1  # take one sentence to the right next time
+
+                    merged_sentence.append(sentence)
+                except IndexError:
+                    break
+
+            # nur sätze nehmen, bei denen es aufgeht (=duplikate vermeiden) und die ins modell passen
+            if len(merged_sentence) == number:
+                merged_sentence.reverse()  # newest post on the left (will be truncated on the right)
+                merged_sent_str = ' '.join(merged_sentence)
+                if len(merged_sent_str.split()) <= max_len:
+                    merged_posts.append(merged_sent_str)
+
+        return merged_posts
+
+
+    def data_augmentation(self, posts, numbers_concat: List[int], overlap: int, max_len: int) -> List[str]:
+        """
+        Function to augment the training and validation data.
+        Takes a list of strings and returns concatinations of 2 posts, 3 posts, etc.
+        The newest post is always at the beginning of the string, the oldest at the end.
+        :param posts: a list of strings (posts by one subject)
+        :param numbers_concat: list of integers that determines how many strings should be concatinated.
+        :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+        :param max_len: maximal input length for model (e.g. 512 or 4096)
+        """
+
+        augmented_data = []
+
+        # current post only (no history)
+        for post in posts:
+            augmented_data.append(post)
+
+        # current post + n posts of history
+        for n in numbers_concat:
+            # TODO: try out if it works better with an overlap (e.g. overlap 10% of n --> more data)
+            for s in self.merge_posts(posts, n, 0, 512):
+                augmented_data.append(s)
+
+        return augmented_data
+
+
+
+
+    def prepare_subject_data(self, subject, numbers_to_concatinate, overlap, max_len):
+        """Takes a filename for a subject and returns two lists:
+        - list of labels of the same length as the list of augmented posts data
+        - augmented data: list of merged posts
+        :param filename: xml file for a subject
+        :param numb_conc: list with numbers that determine how many posts of a subject should be concatinated.
+        :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+        :param max_len: maximal input length for model (e.g. 512 or 4096)
+        """
+
+
+        # mapping label
+        labels = {True: 1, False: 0}
+
+        subject_id = subject.id
+
+        # get subject label
+        if subject.label == True:
+            subject_label = 1
+        elif subject.label == False:
+            subject_label = 0
+
+        # concatinate title and text -> new text
+        subject_texts = []
+        for post in subject.posts:
+            if post.text != "" and post.title != "":
+                text_title = post.title + " " + post.text
+                subject_texts.append(text_title)
+            elif post.text == "" and post.title != "":
+                subject_texts.append(post.title)
+            elif post.text != "" and post.title == "":
+                subject_texts.append(post.text)
+            else:
+                pass
+
+        # augment text
+        augmented_texts = self.data_augmentation(subject_texts, numbers_to_concatinate, overlap, max_len)
+
+        # get list with labels which is as long as augmented text list
+        labels = [subject_label] * len(augmented_texts)
+
+        return labels, augmented_texts
+
+
+    def prepare_dataset(self, subjects, numb_conc: List[int], overlap: int, max_len: int) -> Tuple[List, List]:
+        """Takes a list of file names (all file names from train or val set) and returns
+      a list of labels and a list of strings that can be fed into the Dataloader class.
+      :param dataset: list of xml file names
+      :param numb_conc: list with numbers that determine how many posts of a subject should be concatinated.
+      :param overlap: 0 if no overlap, 1 if 1 string overlap etc.
+      :param max_len: maximal input length for model (e.g. 512 or 4096)
+      """
+        all_labels = []
+        all_texts = []
+        for subject in subjects:
+            info = self.prepare_subject_data(subject, numb_conc, overlap, max_len)
+            for i in info[0]:
+                all_labels.append(i)
+            for i in info[1]:
+                all_texts.append(i)
+
+        return all_labels, all_texts
+
+
+
+
+
+
 class WeightedLossTrainer(transformers.Trainer):
     def compute_loss(self, model, inputs, return_outputs=False):
         labels = inputs.get("labels")
