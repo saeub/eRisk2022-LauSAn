@@ -550,7 +550,7 @@ class Longformer(Model):
         self._model = transformers.LongformerForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
 
     def train(self, subjects: Collection[Subject]):
-        dataset = TransformersDataset(list(subjects), self._tokenizer) # todo connect with dataprocessor from Laura
+        dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
         trainer = transformers.Trainer(
             model = self._model,
             args = transformers.TrainingArguments(
@@ -560,7 +560,7 @@ class Longformer(Model):
                 logging_steps=500,
                 report_to=None
             ),
-            train_dataset=dataset, # todo validation dataset add?
+            train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
         )
         logger.info("Fitting Longformer classifier...")
