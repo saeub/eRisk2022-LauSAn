@@ -359,6 +359,13 @@ class Roberta(Model):
             checkpoint, num_labels=2
         )
 
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "start_threshold": np.arange(0.2, 1.01, 0.05),
+            "target_threshold": np.arange(0.5, 1.01, 0.05),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
+        }
+
     def train(self, subjects: Collection[Subject]):
         dataset = TransformersDataset(
             list(subjects), self._tokenizer, undersample_to_ratio=2.0
