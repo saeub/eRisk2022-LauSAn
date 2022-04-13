@@ -395,43 +395,6 @@ class Roberta(Model):
         return scores
 
 
-class SimpleBert(Model):
-    def __init__(self, checkpoint: str = "distilbert-base-uncased"):
-        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
-        self._model = simpletransformers.classification.ClassificationModel(
-            "distilbert",
-            checkpoint,
-            args=simpletransformers.classification.ClassificationArgs(
-                num_train_epochs=3
-            ),
-        )
-
-    def train(self, subjects: Collection[Subject]):
-        subjects = list(subjects)
-        df = pd.DataFrame(
-            {
-                "text": [
-                    post.title + "||" + post.text
-                    for subject in subjects
-                    for post in subject.posts
-                ],
-                "labels": [
-                    int(subject.label) for subject in subjects for _ in subject.posts
-                ],
-            }
-        )
-        self._model.train_model(df)
-
-    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
-        texts = [
-            post.title + "||" + post.text
-            for subject in subjects
-            for post in subject.posts
-        ]
-        _, scores = self._model.predict(texts)
-        return scores
-
-
 def save(model: Model, filename: str):
     with open(filename, "wb") as f:
         pickle.dump(model, f)
