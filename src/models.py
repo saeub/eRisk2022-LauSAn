@@ -518,6 +518,33 @@ class Longformer(Model):
         return scores
 
 
+class Ensemble(Model):
+    def __init__(self, model_filenames: List[str]):
+        super().__init__(ExponentialThresholdScheduler(0.5, 0.5, 1))
+        self.model_filenames = model_filenames
+        self._models = None
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        first_model = load(self.model_filenames[0])
+        assert isinstance(
+            first_model.threshold_scheduler, ExponentialThresholdScheduler
+        ), (
+            "Threshold scheduler grid search for ensemble models currently only works "
+            "if the first model uses an `ExponentialThresholdScheduler`."
+        )
+        return first_model.threshold_scheduler_grid_search_parameters()
+
+    def train(self, subjects: Collection[Subject]):
+        pass
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        if self._models is None:
+            self._models = [load(filename) for filename in self.model_filenames]
+        model_scores = [model.predict(subjects) for model in self._models]
+        mean_scores = [np.mean(subject_scores) for subject_scores in zip(*model_scores)]
+        return mean_scores
+
+
 def save(model: Model, filename: str):
     with open(filename, "wb") as f:
         pickle.dump(model, f)
