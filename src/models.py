@@ -307,7 +307,7 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
 
         for subject in subjects:
             labels, texts = self.prepare_dataset(subjects, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512)
-            self._texts.extend([tokenizer(t) for t in texts])
+            self._texts.extend([tokenizer(t, truncation=True) for t in texts])
             self._labels.extend(labels)
 
     def __getitem__(self, index):
@@ -543,6 +543,7 @@ class SimpleBert(Model):
         _, scores = self._model.predict(texts)
         return scores
 
+
 class Longformer(Model):
     def __init__(self, checkpoint: str = "allenai/longformer-base-4096"):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20)) # todo which value?
@@ -569,9 +570,12 @@ class Longformer(Model):
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
         scores = []
         for subject in subjects:
-            post = subject.posts[-1] # todo connect with data processor
+            concat_post = ""
+            for i in reversed(range(len(subject.posts))):
+                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
+                concat_post += title_w_text
             item = self._tokenizer(
-                post.title + " " + post.text, truncation=True, return_tensors="pt"
+                concat_post, truncation=True, return_tensors="pt"
             )
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
