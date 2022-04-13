@@ -6,8 +6,6 @@ from collections import defaultdict
 from typing import Any, Collection, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
-import pandas as pd
-import simpletransformers.classification
 import sklearn.feature_extraction
 import sklearn.linear_model
 import sklearn.naive_bayes
@@ -296,14 +294,15 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
         self,
         subjects: Sequence[Subject],
         tokenizer,
-
     ):
 
         self._texts = []
         self._labels = []
 
         for subject in subjects:
-            labels, texts = self.prepare_subject_data(subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 4096)
+            labels, texts = self.prepare_subject_data(
+                subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 4096
+            )
             self._texts.extend([tokenizer(t, truncation=True) for t in texts])
             self._labels.extend(labels)
 
@@ -334,9 +333,13 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
             # put the number of required sentences in a list
             count = 0  # repeat while loop as many times as the number of sentences we want to concatinate
             step2 = 0  # counter so it knows which sentence to pick next
-            merged_sentence = []  # list for required sentences that need to be merged together
+            merged_sentence = (
+                []
+            )  # list for required sentences that need to be merged together
 
-            while count < number:  # for as many times as the number of sentences we want to concatinate
+            while (
+                count < number
+            ):  # for as many times as the number of sentences we want to concatinate
                 try:
                     sentence = posts[i + step2]
                     count += 1  # make one more iteration if the number of required sentence hasn't been reached yet
@@ -349,13 +352,15 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
             # nur sätze nehmen, bei denen es aufgeht (=duplikate vermeiden) und die ins modell passen
             if len(merged_sentence) == number:
                 merged_sentence.reverse()  # newest post on the left (will be truncated on the right)
-                merged_sent_str = ' '.join(merged_sentence)
+                merged_sent_str = " ".join(merged_sentence)
                 if len(merged_sent_str.split()) <= max_len:
                     merged_posts.append(merged_sent_str)
 
         return merged_posts
 
-    def data_augmentation(self, posts, numbers_concat: List[int], overlap: int, max_len: int) -> List[str]:
+    def data_augmentation(
+        self, posts, numbers_concat: List[int], overlap: int, max_len: int
+    ) -> List[str]:
         """
         Function to augment the training and validation data.
         Takes a list of strings and returns concatinations of 2 posts, 3 posts, etc.
@@ -412,14 +417,14 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
                 pass
 
         # augment text
-        augmented_texts = self.data_augmentation(subject_texts, numbers_to_concatinate, overlap, max_len)
+        augmented_texts = self.data_augmentation(
+            subject_texts, numbers_to_concatinate, overlap, max_len
+        )
 
         # get list with labels which is as long as augmented text list
         labels = [subject_label] * len(augmented_texts)
 
         return labels, augmented_texts
-
-
 
 
 class WeightedLossTrainer(transformers.Trainer):
@@ -480,21 +485,25 @@ class Roberta(Model):
 
 class Longformer(Model):
     def __init__(self, checkpoint: str = "allenai/longformer-base-4096"):
-        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20)) # todo which value?
-        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(checkpoint)
-        self._model = transformers.LongformerForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
+        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(
+            checkpoint
+        )
+        self._model = transformers.LongformerForSequenceClassification.from_pretrained(
+            checkpoint, num_labels=2
+        )
 
     def train(self, subjects: Collection[Subject]):
         dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
         trainer = transformers.Trainer(
-            model = self._model,
-            args = transformers.TrainingArguments(
+            model=self._model,
+            args=transformers.TrainingArguments(
                 output_dir="./longformer-checkpoints",
                 save_total_limit=3,
-                num_train_epochs=3, # todo tune epochs, ggf. batch size
+                num_train_epochs=3,  # todo tune epochs, ggf. batch size
                 per_device_train_batch_size=4,
                 logging_steps=500,
-                report_to=None
+                report_to=None,
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
@@ -507,11 +516,11 @@ class Longformer(Model):
         for subject in subjects:
             concat_post = ""
             for i in reversed(range(len(subject.posts))):
-                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
+                title_w_text = (
+                    subject.posts[i].title + " " + subject.posts[i].text + " "
+                )
                 concat_post += title_w_text
-            item = self._tokenizer(
-                concat_post, truncation=True, return_tensors="pt"
-            )
+            item = self._tokenizer(concat_post, truncation=True, return_tensors="pt")
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
             scores.append(score)
