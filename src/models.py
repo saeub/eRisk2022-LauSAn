@@ -301,8 +301,8 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
 
         for subject in subjects:
             labels, texts = self.prepare_subject_data(
-                subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 4096
-            )
+                subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512
+            ) # todo change 512 text len to variable
             self._texts.extend([tokenizer(t, truncation=True) for t in texts])
             self._labels.extend(labels)
 
@@ -532,7 +532,12 @@ class DistilBertConcatenated(Model):
         self._tokenizer = transformers.DistilBertTokenizerFast.from_pretrained(checkpoint)
         self._model = transformers.DistilBertForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
 
-
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "start_threshold": np.arange(0.2, 1.01, 0.05),
+            "target_threshold": np.arange(0.5, 1.01, 0.05),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
+        }
 
     def train(self, subjects: Collection[Subject]):
         dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
