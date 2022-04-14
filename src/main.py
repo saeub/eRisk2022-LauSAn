@@ -59,6 +59,12 @@ def parse_args() -> argparse.Namespace:
         "model_class", choices=model_classes, help="Type of model."
     )
     train_parser.add_argument(
+        "--args",
+        type=json.loads,
+        default={},
+        help="Constructor arguments to use for instantiating model.",
+    )
+    train_parser.add_argument(
         "--data",
         type=argparse.FileType("r"),
         required=True,
@@ -124,7 +130,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def train(args):
-    model: models.Model = args.model_class()
+    model: models.Model = args.model_class(**args.args)
 
     logger.info("Loading data...")
     subjects = [parse_subject(filename.strip()) for filename in args.data]
