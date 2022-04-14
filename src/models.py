@@ -230,9 +230,9 @@ class BertEmbeddingClassifier(Model):
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "start_threshold": np.arange(-10, 5, 1),
-            "target_threshold": np.arange(-5, 10, 1),
-            "time_constant": np.arange(1, 10, 1),
+            "start_threshold": np.arange(-5, 5, 1),
+            "target_threshold": np.arange(-5, 5, 1),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
     def _encode_post(self, post: Post) -> torch.Tensor:
@@ -459,6 +459,49 @@ class Roberta(Model):
                 output_dir="./roberta-checkpoints",
                 save_total_limit=1,
                 num_train_epochs=3,
+            ),
+            train_dataset=dataset,
+            data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
+        )
+        trainer.train()
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        scores = []
+        for subject in subjects:
+            post = subject.posts[-1]
+            item = self._tokenizer(
+                post.title + " " + post.text, truncation=True, return_tensors="pt"
+            )
+            logits = self._model(item.input_ids.to(DEVICE)).logits
+            score = float(torch.softmax(logits, 1)[0, 1])
+            scores.append(score)
+        return scores
+
+
+class Electra(Model):
+    def __init__(self, checkpoint: str = "google/electra-base-discriminator"):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
+        self._tokenizer = transformers.ElectraTokenizer.from_pretrained(checkpoint)
+        self._model = transformers.ElectraForSequenceClassification.from_pretrained(
+            checkpoint, num_labels=2
+        )
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "start_threshold": np.arange(0.2, 1.01, 0.05),
+            "target_threshold": np.arange(0.5, 1.01, 0.05),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
+        }
+
+    def train(self, subjects: Collection[Subject]):
+        dataset = TransformersDataset(list(subjects), self._tokenizer)
+        trainer = transformers.Trainer(
+            model=self._model,
+            args=transformers.TrainingArguments(
+                output_dir="./electra-checkpoints",
+                save_total_limit=3,
+                num_train_epochs=4,
+                per_device_train_batch_size=12,
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
