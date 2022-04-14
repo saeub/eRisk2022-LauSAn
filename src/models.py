@@ -486,29 +486,29 @@ class Roberta(Model):
 class Longformer(Model):
     def __init__(self, checkpoint: str = "allenai/longformer-base-4096"):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
-        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(
-            checkpoint
-        )
-        self._model = transformers.LongformerForSequenceClassification.from_pretrained(
-            checkpoint, num_labels=2
-        )
+        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(checkpoint)
+        self._model = transformers.LongformerForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+        # self._model.config.attention_window = 256
+
+
 
     def train(self, subjects: Collection[Subject]):
         dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
         trainer = transformers.Trainer(
-            model=self._model,
-            args=transformers.TrainingArguments(
+            model = self._model,
+            args = transformers.TrainingArguments(
                 output_dir="./longformer-checkpoints",
                 save_total_limit=3,
-                num_train_epochs=3,  # todo tune epochs, ggf. batch size
-                per_device_train_batch_size=4,
+                num_train_epochs=3,
+                per_device_train_batch_size=2,
                 logging_steps=500,
-                report_to=None,
+                report_to=None
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
         )
         logger.info("Fitting Longformer classifier...")
+        torch.cuda.empty_cache()
         trainer.train()
 
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
@@ -516,11 +516,52 @@ class Longformer(Model):
         for subject in subjects:
             concat_post = ""
             for i in reversed(range(len(subject.posts))):
-                title_w_text = (
-                    subject.posts[i].title + " " + subject.posts[i].text + " "
-                )
+                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
                 concat_post += title_w_text
-            item = self._tokenizer(concat_post, truncation=True, return_tensors="pt")
+            item = self._tokenizer(
+                concat_post, truncation=True, return_tensors="pt"
+            )
+            logits = self._model(item.input_ids.to(DEVICE)).logits
+            score = float(torch.softmax(logits, 1)[0, 1])
+            scores.append(score)
+        return scores
+
+class DistilBertConcatenated(Model):
+    def __init__(self, checkpoint: str = "distilbert-base-uncased"):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
+        self._tokenizer = transformers.DistilBertTokenizerFast.from_pretrained(checkpoint)
+        self._model = transformers.DistilBertForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+
+
+
+    def train(self, subjects: Collection[Subject]):
+        dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
+        trainer = transformers.Trainer(
+            model = self._model,
+            args = transformers.TrainingArguments(
+                output_dir="./distilbert-concatenated-checkpoints",
+                save_total_limit=3,
+                num_train_epochs=3,
+                per_device_train_batch_size=16,
+                logging_steps=500,
+                report_to=None
+            ),
+            train_dataset=dataset,
+            data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
+        )
+        logger.info("Fitting DistillBert classifier...")
+        trainer.train()
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        scores = []
+        for subject in subjects:
+            concat_post = ""
+            for i in reversed(range(len(subject.posts))):
+                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
+                concat_post += title_w_text
+            item = self._tokenizer(
+                concat_post, truncation=True, return_tensors="pt"
+            )
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
             scores.append(score)
