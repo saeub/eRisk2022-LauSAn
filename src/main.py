@@ -90,10 +90,11 @@ def parse_args() -> argparse.Namespace:
         help="Text file containing paths to training subject XML files.",
     )
     optimize_threshold_parser.add_argument(
-        "--metric",
+        "--metrics",
         choices=evaluation.METRICS,
-        default="erde5",
-        help="Metric to optimize for.",
+        nargs="+",
+        default=["erde5"],
+        help="Metrics to optimize for.",
     )
     optimize_threshold_parser.add_argument(
         "--sample",
@@ -157,15 +158,16 @@ def optimize_threshold(args):
     subjects = [parse_subject(filename.strip()) for filename in args.data]
 
     logger.info("Optimizing threshold scheduler...")
-    metric, minimize = evaluation.METRICS[args.metric]
-    model.optimize_threshold_scheduler(subjects, metric, minimize)
-    save_path = (
-        args.save_path
-        or re.sub(r".pickle$", "", args.model) + f".optimized_{args.metric}.pickle"
-    )
-
-    logger.info(f"Saving model to {save_path}...")
-    models.save(model, save_path)
+    run = None
+    for metric_name in args.metrics:
+        metric, minimize = evaluation.METRICS[metric_name]
+        run = model.optimize_threshold_scheduler(subjects, metric, minimize, run=run)
+        save_path = (
+            args.save_path
+            or re.sub(r".pickle$", "", args.model) + f".optimized_{metric_name}.pickle"
+        )
+        logger.info(f"Saving model to {save_path}...")
+        models.save(model, save_path)
 
 
 def submit(args):

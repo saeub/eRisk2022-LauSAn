@@ -37,14 +37,19 @@ class Model(ABC):
         metric: evaluation.Metric,
         minimize: bool = False,
         sample: Optional[int] = None,
-    ):
+        run: Optional[evaluation.Run] = None,
+    ) -> evaluation.Run:
         """
         Optimize the threshold scheduler's parameters.
 
         This works by predicting scores for training subjects as if it was a real run,
         and then letting the ThresholdScheduler find the best parameters based on those
         scores and modify itself in-place.
+        
+        If a `run` is given, it will be used to perform grid search. Otherwise, a run
+        is predicted first, and returned in the end to reuse with other metrics.
         """
+        if run is None:
         logger.info(f"({self.__class__.__name__}) Predicting run...")
         subjects = list(subjects)
         if sample is not None:
@@ -53,15 +58,14 @@ class Model(ABC):
         run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
         run = {subject: [] for subject in run_subjects}
 
-        while True:
-            any_posts_left = False
+            num_posts_done = 0
+            max_num_posts = max(len(subject.posts) for subject in subjects)
+            progress = tqdm(total=max_num_posts)
+            while num_posts_done < max_num_posts:
             # Copy over posts from `subjects` to `run_subjects` one by one
             for subject, run_subject in zip(subjects, run_subjects):
                 if len(subject.posts) > len(run_subject.posts):
                     run_subject.posts.append(subject.posts[len(run_subject.posts)])
-                    any_posts_left = True
-            if not any_posts_left:
-                break
 
             # Predict using the post histories up to this point, add scores to `run`
             run_subjects_to_predict = [
@@ -73,13 +77,18 @@ class Model(ABC):
             for subject, decision in zip(run_subjects_to_predict, decisions):
                 run[subject].append(decision)
 
-        logger.info(f"({self.__class__.__name__}) Performing grid search...")
+                num_posts_done += 1
+                progress.update()
+            progress.refresh()
+
+        logger.info(f"({self.__class__.__name__}) Performing grid search to optimize {metric}...")
         self.threshold_scheduler.grid_search(
             self.threshold_scheduler_grid_search_parameters(),
             run,
             metric,
             minimize=minimize,
         )
+        return run
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {}
