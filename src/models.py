@@ -607,6 +607,7 @@ class DistilBertConcatenated(Model):
             for i in reversed(range(len(subject.posts))):
                 title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
                 concat_post += title_w_text
+            concat_post = " ".join(concat_post.split(" ")[:500])
             item = self._tokenizer(
                 concat_post, truncation=True, return_tensors="pt"
             )
