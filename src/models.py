@@ -121,13 +121,15 @@ class RandomBaseline(Model):
 
 class VocabularyBaseline(Model):
     def __init__(self, vocab_size: int = 200, min_count: int = 10):
-        super().__init__(threshold_scheduler=ConstantThresholdScheduler(0.5))
+        super().__init__(threshold_scheduler=ExponentialThresholdScheduler(0.1, 0.1, 1))
         self.vocab_size = vocab_size
         self.min_count = min_count
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "threshold": np.arange(0, 1, 0.1),
+            "start_threshold": np.arange(0, 5, 0.5),
+            "target_threshold": np.arange(1, 7, 0.5),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
     @classmethod
@@ -171,7 +173,7 @@ class VocabularyBaseline(Model):
         for subject in subjects:
             last_post = self._tokenize(subject.posts[-1].text)
             num_matches = sum(word in self._pos_vocab for word in last_post)
-            predictions.append(num_matches / (len(last_post) or 1) * 50)
+            predictions.append(num_matches / (len(last_post) or 1) * 100)
         return predictions
 
 
@@ -185,9 +187,9 @@ class NBClassifier(Model):
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "start_threshold": np.arange(0.0, 0.5, 0.05),
-            "target_threshold": np.arange(0.0, 0.7, 0.05),
-            "time_constant": np.arange(1, 10, 1),
+            "start_threshold": np.arange(0.0, 0.5, 0.1),
+            "target_threshold": np.arange(0.0, 0.7, 0.1),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
     def train(self, subjects: Collection[Subject]):
