@@ -9,6 +9,8 @@ import numpy as np
 import sklearn.feature_extraction
 import sklearn.linear_model
 import sklearn.naive_bayes
+import sklearn.neighbors
+import sklearn.svm
 import torch
 import transformers
 from tqdm import tqdm
@@ -50,32 +52,32 @@ class Model(ABC):
         is predicted first, and returned in the end to reuse with other metrics.
         """
         if run is None:
-        logger.info(f"({self.__class__.__name__}) Predicting run...")
-        subjects = list(subjects)
-        if sample is not None:
-            random.shuffle(subjects)
-            subjects = subjects[:sample]
-        run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
-        run = {subject: [] for subject in run_subjects}
+            logger.info(f"({self.__class__.__name__}) Predicting run...")
+            subjects = list(subjects)
+            if sample is not None:
+                random.shuffle(subjects)
+                subjects = subjects[:sample]
+            run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
+            run = {subject: [] for subject in run_subjects}
 
             num_posts_done = 0
             max_num_posts = max(len(subject.posts) for subject in subjects)
             progress = tqdm(total=max_num_posts)
             while num_posts_done < max_num_posts:
-            # Copy over posts from `subjects` to `run_subjects` one by one
-            for subject, run_subject in zip(subjects, run_subjects):
-                if len(subject.posts) > len(run_subject.posts):
-                    run_subject.posts.append(subject.posts[len(run_subject.posts)])
+                # Copy over posts from `subjects` to `run_subjects` one by one
+                for subject, run_subject in zip(subjects, run_subjects):
+                    if len(subject.posts) > len(run_subject.posts):
+                        run_subject.posts.append(subject.posts[len(run_subject.posts)])
 
-            # Predict using the post histories up to this point, add scores to `run`
-            run_subjects_to_predict = [
-                subject
-                for subject in run_subjects
-                if len(subject.posts) > len(run[subject])
-            ]
-            decisions = self.decide(run_subjects_to_predict)
-            for subject, decision in zip(run_subjects_to_predict, decisions):
-                run[subject].append(decision)
+                # Predict using the post histories up to this point, add scores to `run`
+                run_subjects_to_predict = [
+                    subject
+                    for subject in run_subjects
+                    if len(subject.posts) > len(run[subject])
+                ]
+                decisions = self.decide(run_subjects_to_predict)
+                for subject, decision in zip(run_subjects_to_predict, decisions):
+                    run[subject].append(decision)
 
                 num_posts_done += 1
                 progress.update()
@@ -226,14 +228,24 @@ class BertEmbeddingClassifier(Model):
         self,
         checkpoint: str = "bert-base-uncased",
         layers: Collection[str] = (-4, -3, -2, -1),
+        history: int = 1,
+        classifier: str = "logistic_regression",
     ):
         super().__init__(ExponentialThresholdScheduler(0, 2, 10))
         self.layers = layers
+        self.history = history
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
         self._model = transformers.AutoModel.from_pretrained(
             checkpoint, output_hidden_states=True
         ).to(DEVICE)
-        self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
+        if classifier == "logistic_regression":
+            self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
+        elif classifier == "svm":
+            self._classifier = sklearn.svm.SVC()
+        elif classifier == "knn":
+            self._classifier = sklearn.neighbors.KNeighborsClassifier()
+        else:
+            raise ValueError(f"Invalid classifier type {classifier}")
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
@@ -242,8 +254,8 @@ class BertEmbeddingClassifier(Model):
             "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
-    def _encode_post(self, post: Post) -> torch.Tensor:
-        text = post.title + " " + post.text
+    def _encode_posts(self, posts: Sequence[Post]) -> torch.Tensor:
+        text = " ".join(reversed([post.title + " " + post.text for post in posts[-self.history :]]))
         tokens = self._tokenizer.encode(text, return_tensors="pt", truncation=True).to(
             DEVICE
         )
@@ -257,8 +269,8 @@ class BertEmbeddingClassifier(Model):
         X = []
         y = []
         for subject in tqdm(subjects):
-            for post in subject.posts:
-                x = self._encode_post(post)
+            for i in range(len(subject.posts)):
+                x = self._encode_posts(subject.posts[: i + 1])
                 X.append(x)
                 y.append(int(subject.label))
         logger.info(f"({self.__class__.__name__}) Fitting classifier...")
@@ -267,7 +279,7 @@ class BertEmbeddingClassifier(Model):
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
         X = []
         for subject in subjects:
-            x = self._encode_post(subject.posts[-1])
+            x = self._encode_posts(subject.posts)
             X.append(x)
         y_pred = self._classifier.decision_function(torch.stack(X))
         return y_pred
