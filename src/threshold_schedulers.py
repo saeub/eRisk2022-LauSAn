@@ -128,3 +128,22 @@ class ExponentialThresholdScheduler(ThresholdScheduler):
             self.start_threshold - self.target_threshold
         ) * 10 ** (-round / self.time_constant)
         return bool(score >= threshold)
+
+
+class WaitExponentialThresholdScheduler(ExponentialThresholdScheduler):
+    def __init__(self, wait: int, *args, **kwargs):
+        """
+        Like `ExponentialThresholdScheduler`, but with a forced `False` decision in the
+        first `wait` rounds. This is to be used with models where we know that the first
+        few posts typically result in unreliable decisions.
+        """
+        super().__init__(*args, **kwargs)
+        self.wait = wait
+
+    def __repr__(self) -> str:
+        return f"{self.__class__.__name__}({self.wait}, {self.start_threshold}, {self.target_threshold}, {self.time_constant})"
+
+    def decide(self, score: float, round: int) -> bool:
+        if round < self.wait:
+            return False
+        return super().decide(score, round)
