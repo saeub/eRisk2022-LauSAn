@@ -47,7 +47,7 @@ class Model(ABC):
         This works by predicting scores for training subjects as if it was a real run,
         and then letting the ThresholdScheduler find the best parameters based on those
         scores and modify itself in-place.
-        
+
         If a `run` is given, it will be used to perform grid search. Otherwise, a run
         is predicted first, and returned in the end to reuse with other metrics.
         """
@@ -57,7 +57,9 @@ class Model(ABC):
             if sample is not None:
                 random.shuffle(subjects)
                 subjects = subjects[:sample]
-            run_subjects = [Subject(subject.id, [], subject.label) for subject in subjects]
+            run_subjects = [
+                Subject(subject.id, [], subject.label) for subject in subjects
+            ]
             run = {subject: [] for subject in run_subjects}
 
             num_posts_done = 0
@@ -83,7 +85,9 @@ class Model(ABC):
                 progress.update()
             progress.refresh()
 
-        logger.info(f"({self.__class__.__name__}) Performing grid search to optimize {metric}...")
+        logger.info(
+            f"({self.__class__.__name__}) Performing grid search to optimize {metric}..."
+        )
         self.threshold_scheduler.grid_search(
             self.threshold_scheduler_grid_search_parameters(),
             run,
@@ -132,13 +136,15 @@ class RandomBaseline(Model):
 
 class VocabularyBaseline(Model):
     def __init__(self, vocab_size: int = 200, min_count: int = 10):
-        super().__init__(threshold_scheduler=ConstantThresholdScheduler(0.5))
+        super().__init__(threshold_scheduler=ExponentialThresholdScheduler(0.1, 0.1, 1))
         self.vocab_size = vocab_size
         self.min_count = min_count
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "threshold": np.arange(0, 1, 0.1),
+            "start_threshold": np.arange(0, 5, 0.5),
+            "target_threshold": np.arange(1, 7, 0.5),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
     @classmethod
@@ -182,7 +188,7 @@ class VocabularyBaseline(Model):
         for subject in subjects:
             last_post = self._tokenize(subject.posts[-1].text)
             num_matches = sum(word in self._pos_vocab for word in last_post)
-            predictions.append(num_matches / (len(last_post) or 1) * 50)
+            predictions.append(num_matches / (len(last_post) or 1) * 100)
         return predictions
 
 
@@ -196,9 +202,9 @@ class NBClassifier(Model):
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "start_threshold": np.arange(0.0, 0.5, 0.05),
-            "target_threshold": np.arange(0.0, 0.7, 0.05),
-            "time_constant": np.arange(1, 10, 1),
+            "start_threshold": np.arange(0.0, 0.5, 0.1),
+            "target_threshold": np.arange(0.0, 0.7, 0.1),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
     def train(self, subjects: Collection[Subject]):
@@ -249,6 +255,7 @@ class BertEmbeddingClassifier(Model):
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
+            "wait": range(5),
             "start_threshold": np.arange(-5, 5, 1),
             "target_threshold": np.arange(-5, 5, 1),
             "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
@@ -323,7 +330,7 @@ class TransformersConcatinatedDataset(torch.utils.data.Dataset):
         for subject in subjects:
             labels, texts = self.prepare_subject_data(
                 subject, [2, 3, 4, 10, 20, 30, 40, 50], 0, 512
-            ) # todo change 512 text len to variable
+            )  # todo change 512 text len to variable
             self._texts.extend([tokenizer(t, truncation=True) for t in texts])
             self._labels.extend(labels)
 
@@ -550,23 +557,25 @@ class Electra(Model):
 class Longformer(Model):
     def __init__(self, checkpoint: str = "allenai/longformer-base-4096"):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
-        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(checkpoint)
-        self._model = transformers.LongformerForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+        self._tokenizer = transformers.LongformerTokenizerFast.from_pretrained(
+            checkpoint
+        )
+        self._model = transformers.LongformerForSequenceClassification.from_pretrained(
+            checkpoint, num_labels=2
+        )
         # self._model.config.attention_window = 256
-
-
 
     def train(self, subjects: Collection[Subject]):
         dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
         trainer = transformers.Trainer(
-            model = self._model,
-            args = transformers.TrainingArguments(
+            model=self._model,
+            args=transformers.TrainingArguments(
                 output_dir="./longformer-checkpoints",
                 save_total_limit=3,
                 num_train_epochs=3,
                 per_device_train_batch_size=2,
                 logging_steps=500,
-                report_to=None
+                report_to=None,
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
@@ -580,21 +589,26 @@ class Longformer(Model):
         for subject in subjects:
             concat_post = ""
             for i in reversed(range(len(subject.posts))):
-                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
+                title_w_text = (
+                    subject.posts[i].title + " " + subject.posts[i].text + " "
+                )
                 concat_post += title_w_text
-            item = self._tokenizer(
-                concat_post, truncation=True, return_tensors="pt"
-            )
+            item = self._tokenizer(concat_post, truncation=True, return_tensors="pt")
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
             scores.append(score)
         return scores
 
+
 class DistilBertConcatenated(Model):
     def __init__(self, checkpoint: str = "distilbert-base-uncased"):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
-        self._tokenizer = transformers.DistilBertTokenizerFast.from_pretrained(checkpoint)
-        self._model = transformers.DistilBertForSequenceClassification.from_pretrained(checkpoint, num_labels=2)
+        self._tokenizer = transformers.DistilBertTokenizerFast.from_pretrained(
+            checkpoint
+        )
+        self._model = transformers.DistilBertForSequenceClassification.from_pretrained(
+            checkpoint, num_labels=2
+        )
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
@@ -606,14 +620,14 @@ class DistilBertConcatenated(Model):
     def train(self, subjects: Collection[Subject]):
         dataset = TransformersConcatinatedDataset(list(subjects), self._tokenizer)
         trainer = transformers.Trainer(
-            model = self._model,
-            args = transformers.TrainingArguments(
+            model=self._model,
+            args=transformers.TrainingArguments(
                 output_dir="./distilbert-concatenated-checkpoints",
                 save_total_limit=3,
                 num_train_epochs=3,
                 per_device_train_batch_size=16,
                 logging_steps=500,
-                report_to=None
+                report_to=None,
             ),
             train_dataset=dataset,
             data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
@@ -626,12 +640,12 @@ class DistilBertConcatenated(Model):
         for subject in subjects:
             concat_post = ""
             for i in reversed(range(len(subject.posts))):
-                title_w_text = subject.posts[i].title + " " + subject.posts[i].text + " "
+                title_w_text = (
+                    subject.posts[i].title + " " + subject.posts[i].text + " "
+                )
                 concat_post += title_w_text
             concat_post = " ".join(concat_post.split(" ")[:500])
-            item = self._tokenizer(
-                concat_post, truncation=True, return_tensors="pt"
-            )
+            item = self._tokenizer(concat_post, truncation=True, return_tensors="pt")
             logits = self._model(item.input_ids.to(DEVICE)).logits
             score = float(torch.softmax(logits, 1)[0, 1])
             scores.append(score)
