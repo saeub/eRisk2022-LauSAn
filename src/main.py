@@ -115,6 +115,9 @@ def parse_args() -> argparse.Namespace:
     submit_parser.add_argument(
         "--team-token", default="dummy_token", help="Team token for submission API."
     )
+    submit_parser.add_argument(
+        "--resume", help="JSON file with subjects to resume from in case of a crash."
+    )
 
     info_parser = subparsers.add_parser("info", **parser_kwargs)
     info_parser.add_argument("model", help="Path to saved model.")
@@ -173,7 +176,24 @@ def optimize_threshold(args):
 def submit(args):
     run_models = [models.load(model) for model in args.models]
 
-    subjects = {}
+    if args.resume is not None:
+        with open(args.resume) as f:
+            saved_subjects = json.load(f)
+        subjects = {
+            subject["id"]: Subject(
+                subject["id"],
+                [
+                    Post(
+                        post["title"],
+                        dateutil.parser.isoparse(post["date"]),
+                        post["text"],
+                    )
+                    for post in subject["posts"]
+                ],
+                None,
+            )
+            for subject in saved_subjects
+        }
 
     @atexit.register
     def dump_subjects():
@@ -196,8 +216,9 @@ def submit(args):
             subject_id = writing["nick"]
             subject = subjects.setdefault(subject_id, Subject(subject_id, [], None))
             assert writing["number"] == len(subject.posts), (
-                "Internal number of posts does not agree with API. Was the submission"
-                "stopped and resumed without importing previous post histories?"
+                f"Internal number of posts by subject '{subject.id}' ({len(subject.posts)}) "
+                f"does not agree with API ({writing['number']}). "
+                "Was the submission stopped and resumed without importing previous post histories?"
             )
             subject.posts.append(
                 Post(
