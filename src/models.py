@@ -625,7 +625,7 @@ class DistilBertConcatenated(Model):
                 output_dir="./distilbert-concatenated-checkpoints",
                 save_total_limit=3,
                 num_train_epochs=3,
-                per_device_train_batch_size=16,
+                per_device_train_batch_size=22,
                 logging_steps=500,
                 report_to=None,
             ),

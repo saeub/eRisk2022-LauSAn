@@ -176,6 +176,7 @@ def optimize_threshold(args):
 def submit(args):
     run_models = [models.load(model) for model in args.models]
 
+    subjects = {}
     if args.resume is not None:
         with open(args.resume) as f:
             saved_subjects = json.load(f)
