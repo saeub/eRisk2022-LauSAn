@@ -16,8 +16,13 @@ import transformers
 from tqdm import tqdm
 
 import evaluation
-from data import Post, Subject
+from data import Subject
 from log import logger
+from preprocessing import (
+    AugmentedPreprocessing,
+    LatestPostsPreprocessing,
+    Preprocessing,
+)
 from threshold_schedulers import (
     ConstantThresholdScheduler,
     ExponentialThresholdScheduler,
@@ -234,16 +239,16 @@ class BertEmbeddingClassifier(Model):
         self,
         checkpoint: str = "bert-base-uncased",
         layers: Collection[str] = (-4, -3, -2, -1),
-        history: int = 1,
         classifier: str = "logistic_regression",
+        preprocessing: str = "simple",
     ):
         super().__init__(ExponentialThresholdScheduler(0, 2, 10))
         self.layers = layers
-        self.history = history
         self._tokenizer = transformers.AutoTokenizer.from_pretrained(checkpoint)
         self._model = transformers.AutoModel.from_pretrained(
             checkpoint, output_hidden_states=True
         ).to(DEVICE)
+
         if classifier == "logistic_regression":
             self._classifier = sklearn.linear_model.LogisticRegression(max_iter=10000)
         elif classifier == "svm":
@@ -253,6 +258,15 @@ class BertEmbeddingClassifier(Model):
         else:
             raise ValueError(f"Invalid classifier type {classifier}")
 
+        if preprocessing == "simple":
+            self._preprocessing = LatestPostsPreprocessing(1)
+        elif preprocessing == "history":
+            self._preprocessing = LatestPostsPreprocessing(5)
+        elif preprocessing == "augmented":
+            self._preprocessing = AugmentedPreprocessing()
+        else:
+            raise ValueError(f"Invalid preprocessing type {preprocessing}")
+
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
             "wait": range(5),
@@ -261,8 +275,7 @@ class BertEmbeddingClassifier(Model):
             "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
         }
 
-    def _encode_posts(self, posts: Sequence[Post]) -> torch.Tensor:
-        text = " ".join(reversed([post.title + " " + post.text for post in posts[-self.history :]]))
+    def _encode_text(self, text: str) -> torch.Tensor:
         tokens = self._tokenizer.encode(text, return_tensors="pt", truncation=True).to(
             DEVICE
         )
@@ -275,11 +288,10 @@ class BertEmbeddingClassifier(Model):
         logger.info(f"({self.__class__.__name__}) Encoding posts...")
         X = []
         y = []
-        for subject in tqdm(subjects):
-            for i in range(len(subject.posts)):
-                x = self._encode_posts(subject.posts[: i + 1])
-                X.append(x)
-                y.append(int(subject.label))
+        for text, label in tqdm(self._preprocessing.preprocess_for_training(subjects)):
+            x = self._encode_text(text)
+            X.append(x)
+            y.append(int(label))
         logger.info(f"({self.__class__.__name__}) Fitting classifier...")
         self._classifier.fit(torch.stack(X), y)
 
@@ -292,29 +304,87 @@ class BertEmbeddingClassifier(Model):
         return y_pred
 
 
-class TransformersDataset(torch.utils.data.Dataset):
+class TransformerDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        subjects: Sequence[Subject],
+        subjects: Collection[Subject],
+        preprocessing: Preprocessing,
         tokenizer,
     ):
-        # TODO: Concatenate final posts, truncate from start
-        self._texts = [
-            tokenizer(post.title + " " + post.text, truncation=True)
-            for subject in subjects
-            for post in subject.posts
-        ]
-        self._labels = [
-            int(subject.label) for subject in subjects for _ in subject.posts
-        ]
+        self._items = []
+        for text, label in preprocessing.preprocess_for_training(subjects):
+            item = tokenizer(text, truncation=True)
+            item["label"] = int(label)
+            self._items.append(item)
 
     def __getitem__(self, index):
-        item = self._texts[index]
-        item["labels"] = self._labels[index]
-        return item
+        return self._items[index]
 
     def __len__(self):
-        return len(self._texts)
+        return len(self._items)
+
+
+class Transformer(Model):
+    def __init__(
+        self,
+        checkpoint: str = "distilbert-base-uncased",
+        preprocessing: str = "simple",
+    ):
+        super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
+        self._checkpoint = checkpoint
+        self._tokenizer = transformers.DistilBertTokenizerFast.from_pretrained(
+            checkpoint
+        )
+        self._model = transformers.DistilBertForSequenceClassification.from_pretrained(
+            checkpoint, num_labels=2
+        )
+
+        if preprocessing == "simple":
+            self._preprocessing = LatestPostsPreprocessing(1)
+        elif preprocessing == "history":
+            self._preprocessing = LatestPostsPreprocessing(5)
+        elif preprocessing == "augmented":
+            self._preprocessing = AugmentedPreprocessing()
+        else:
+            raise ValueError(f"Invalid preprocessing type {preprocessing}")
+
+    def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
+        return {
+            "start_threshold": np.arange(0.2, 1.01, 0.05),
+            "target_threshold": np.arange(0.5, 1.01, 0.05),
+            "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
+        }
+
+    def train(self, subjects: Collection[Subject]):
+        logger.info(f"({self.__class__.__name__}) Preprocessing data...")
+        dataset = TransformerDataset(
+            list(subjects), self._preprocessing, self._tokenizer
+        )
+        trainer = transformers.Trainer(
+            model=self._model,
+            args=transformers.TrainingArguments(
+                output_dir=f"./checkpoints-{self._checkpoint}",
+                save_total_limit=3,
+                num_train_epochs=3,
+                per_device_train_batch_size=16,
+                logging_steps=500,
+                report_to="none",
+            ),
+            train_dataset=dataset,
+            data_collator=transformers.DataCollatorWithPadding(self._tokenizer),
+        )
+        logger.info(f"({self.__class__.__name__}) Finetuning transformer...")
+        trainer.train()
+
+    def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
+        scores = []
+        for subject in subjects:
+            text = self._preprocessing.preprocess_for_prediction(subject)
+            item = self._tokenizer(text, truncation=True, return_tensors="pt")
+            logits = self._model(item.input_ids.to(DEVICE)).logits
+            score = float(torch.softmax(logits, 1)[0, 1])
+            scores.append(score)
+        return scores
 
 
 class TransformersConcatinatedDataset(torch.utils.data.Dataset):
