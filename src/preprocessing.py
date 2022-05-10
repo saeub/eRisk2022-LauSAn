@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Collection, Iterator, List, Sequence, Tuple
+from typing import Collection, Iterator, List, Tuple
 
 from data import Subject
 
@@ -12,7 +12,7 @@ class Preprocessing(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def preprocess_for_prediction(self, subjects: Sequence[Subject]) -> Iterator[str]:
+    def preprocess_for_prediction(self, subject: Subject) -> str:
         raise NotImplementedError()
 
 
@@ -34,11 +34,10 @@ class LatestPostsPreprocessing(Preprocessing):
                     reversed([post.title + " " + post.text for post in posts])
                 ), subject.label
 
-    def preprocess_for_prediction(self, subjects: Sequence[Subject]) -> Iterator[str]:
-        for subject in subjects:
-            posts = subject.posts[-self.n :]
-            text = " ".join(reversed([post.title + " " + post.text for post in posts]))
-            yield text, subject.label
+    def preprocess_for_prediction(self, subject: Subject) -> str:
+        posts = subject.posts[-self.n :]
+        text = " ".join(reversed([post.title + " " + post.text for post in posts]))
+        return text
 
 
 class AugmentedPreprocessing(Preprocessing):

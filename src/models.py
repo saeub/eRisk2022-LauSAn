@@ -298,7 +298,8 @@ class BertEmbeddingClassifier(Model):
     def predict(self, subjects: Sequence[Subject]) -> Sequence[float]:
         X = []
         for subject in subjects:
-            x = self._encode_posts(subject.posts)
+            text = self._preprocessing.preprocess_for_prediction(subject)
+            x = self._encode_text(text)
             X.append(x)
         y_pred = self._classifier.decision_function(torch.stack(X))
         return y_pred
