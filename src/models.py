@@ -263,7 +263,7 @@ class BertEmbeddingClassifier(Model):
         elif preprocessing == "history":
             self._preprocessing = LatestPostsPreprocessing(5)
         elif preprocessing == "augmented":
-            self._preprocessing = AugmentedPreprocessing()
+            self._preprocessing = AugmentedPreprocessing([2, 3, 4, 10, 20, 30, 40, 50], 0, 512)
         else:
             raise ValueError(f"Invalid preprocessing type {preprocessing}")
 
@@ -345,7 +345,7 @@ class Transformer(Model):
         elif preprocessing == "history":
             self._preprocessing = LatestPostsPreprocessing(5)
         elif preprocessing == "augmented":
-            self._preprocessing = AugmentedPreprocessing()
+            self._preprocessing = AugmentedPreprocessing([2, 3, 4, 10, 20, 30, 40, 50], 0, 2048) # TODO: stimmt 2048 für die max sequence length für distilbert??
         else:
             raise ValueError(f"Invalid preprocessing type {preprocessing}")
 
