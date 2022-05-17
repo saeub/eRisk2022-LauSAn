@@ -282,13 +282,13 @@ class BertEmbeddingClassifier(Model):
         with torch.no_grad():
             states = self._model(tokens).hidden_states
         embeddings = torch.stack([states[i] for i in self.layers]).sum(0).squeeze()
-        return embeddings.mean(0).cpu()  # TODO: Try other aggregations
+        return embeddings.mean(0).cpu()
 
     def train(self, subjects: Collection[Subject]):
         logger.info(f"({self.__class__.__name__}) Encoding posts...")
         X = []
         y = []
-        for text, label in tqdm(self._preprocessing.preprocess_for_training(subjects)):
+        for text, label in self._preprocessing.preprocess_for_training(subjects):
             x = self._encode_text(text)
             X.append(x)
             y.append(int(label))
@@ -312,14 +312,14 @@ class TransformerDataset(torch.utils.data.Dataset):
         preprocessing: Preprocessing,
         tokenizer,
     ):
-        self._items = []
-        for text, label in preprocessing.preprocess_for_training(subjects):
-            item = tokenizer(text, truncation=True)
-            item["label"] = int(label)
-            self._items.append(item)
+        self._tokenizer = tokenizer
+        self._items = list(preprocessing.preprocess_for_training(subjects))
 
     def __getitem__(self, index):
-        return self._items[index]
+        text, label = self._items[index]
+        item = self._tokenizer(text, truncation=True)
+        item["label"] = int(label)
+        return item
 
     def __len__(self):
         return len(self._items)
@@ -330,13 +330,15 @@ class Transformer(Model):
         self,
         checkpoint: str = "distilbert-base-uncased",
         preprocessing: str = "simple",
+        epochs: int = 3,
     ):
         super().__init__(ExponentialThresholdScheduler(0.3, 0.8, 20))
         self._checkpoint = checkpoint
-        self._tokenizer = transformers.DistilBertTokenizerFast.from_pretrained(
+        self._epochs = epochs
+        self._tokenizer = transformers.AutoTokenizer.from_pretrained(
             checkpoint
         )
-        self._model = transformers.DistilBertForSequenceClassification.from_pretrained(
+        self._model = transformers.AutoModelForSequenceClassification.from_pretrained(
             checkpoint, num_labels=2
         )
 
@@ -366,7 +368,7 @@ class Transformer(Model):
             args=transformers.TrainingArguments(
                 output_dir=f"./checkpoints-{self._checkpoint}",
                 save_total_limit=3,
-                num_train_epochs=3,
+                num_train_epochs=self._epochs,
                 per_device_train_batch_size=16,
                 logging_steps=500,
                 report_to="none",

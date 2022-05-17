@@ -11,7 +11,7 @@ from typing import Collection
 import dataclasses
 
 import dateutil.parser
-import numpy
+import numpy as np
 import requests
 import torch
 from tqdm import tqdm
@@ -23,7 +23,7 @@ from log import logger
 
 RANDOM_SEED = 42
 random.seed(RANDOM_SEED)
-numpy.random.seed(RANDOM_SEED)
+np.random.seed(RANDOM_SEED)
 torch.manual_seed(RANDOM_SEED)
 
 SUBJECTS_JSON_FILENAME = f"subjects_{datetime.now().isoformat()}.json"
