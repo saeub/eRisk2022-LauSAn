@@ -21,7 +21,7 @@ By default, the model will be saved with a timestamp in the filename in the curr
 To optimize the threshold scheduler parameters, use:
 
 ```bash
-$ python src/main.py optimize-threshold my_model.pickle --metric erde5 --data data/train_set_1.txt
+$ python src/main.py optimize-threshold my_model.pickle --metrics erde5 erde50 latency-f1 --data data/train_set_1.txt
 ```
 
 This will perform grid search over a range of parameter values defined in the model class and store the optimized model in a second file (by default, appending `.optimized` to the filename base).
