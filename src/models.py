@@ -269,7 +269,6 @@ class BertEmbeddingClassifier(Model):
 
     def threshold_scheduler_grid_search_parameters(self) -> Dict[str, Collection[Any]]:
         return {
-            "wait": range(5),
             "start_threshold": np.arange(-5, 5, 1),
             "target_threshold": np.arange(-5, 5, 1),
             "time_constant": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50],
